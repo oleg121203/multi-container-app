@@ -42,6 +42,10 @@ class ATLASEnhanced {
     // Voice Interaction Capabilities
     async setupVoiceCapabilities() {
         try {
+            // Initialize MediaRecorder for audio capture
+            this.mediaRecorder = null;
+            this.audioChunks = [];
+            
             // Check for Speech Recognition support
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 this.speechRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -61,6 +65,18 @@ class ATLASEnhanced {
                 
                 this.voiceEnabled = true;
                 this.interface.log('info', 'Voice recognition capabilities enabled');
+            }
+
+            // Check for MediaRecorder support for STT API integration
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.interface.log('info', 'Microphone access granted for STT API');
+                    this.sttApiEnabled = true;
+                } catch (error) {
+                    this.interface.log('warn', 'Microphone access denied, using browser STT only');
+                    this.sttApiEnabled = false;
+                }
             }
 
             // Check for Speech Synthesis support
@@ -87,6 +103,21 @@ class ATLASEnhanced {
             voiceBtn.addEventListener('click', () => this.startVoiceRecognition());
         }
         
+        // Add STT API button if available
+        if (this.sttApiEnabled) {
+            const sttBtn = document.createElement('button');
+            sttBtn.className = 'btn';
+            sttBtn.id = 'sttBtn';
+            sttBtn.textContent = 'REC';
+            sttBtn.title = 'Record audio for STT API';
+            sttBtn.addEventListener('click', () => this.startSTTRecording());
+            
+            const controlButtons = document.querySelector('.control-buttons');
+            if (controlButtons && !document.getElementById('sttBtn')) {
+                controlButtons.appendChild(sttBtn);
+            }
+        }
+        
         if (ttsBtn && this.speechSynthesis) {
             ttsBtn.style.display = 'block';
             ttsBtn.addEventListener('click', () => this.toggleTTS());
@@ -107,6 +138,72 @@ class ATLASEnhanced {
                 voiceBtn.textContent = 'MIC';
                 voiceBtn.style.color = '';
             }, 5000);
+        }
+    }
+
+    async startSTTRecording() {
+        const sttBtn = document.getElementById('sttBtn');
+        
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            // Stop recording
+            this.mediaRecorder.stop();
+            sttBtn.textContent = 'REC';
+            sttBtn.style.color = '';
+            this.interface.log('info', 'Stopped recording, processing audio...');
+            return;
+        }
+        
+        if (!this.audioStream || !this.sttApiEnabled) {
+            this.interface.log('warn', 'Audio recording not available');
+            return;
+        }
+        
+        try {
+            this.audioChunks = [];
+            this.mediaRecorder = new MediaRecorder(this.audioStream);
+            
+            this.mediaRecorder.ondataavailable = (event) => {
+                this.audioChunks.push(event.data);
+            };
+            
+            this.mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+                await this.sendAudioToSTT(audioBlob);
+            };
+            
+            this.mediaRecorder.start();
+            sttBtn.textContent = 'STOP';
+            sttBtn.style.color = '#ff4444';
+            this.interface.log('info', 'Recording audio for STT API...');
+            
+        } catch (error) {
+            console.error('Recording failed:', error);
+            this.interface.log('error', 'Failed to start audio recording');
+        }
+    }
+    
+    async sendAudioToSTT(audioBlob) {
+        try {
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+            
+            const response = await fetch('/api/stt', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.interface.log('info', `STT result: "${result.transcript}" (confidence: ${result.confidence})`);
+                this.handleVoiceInput(result.transcript);
+            } else {
+                this.interface.log('error', `STT failed: ${result.message}`);
+            }
+            
+        } catch (error) {
+            console.error('STT API call failed:', error);
+            this.interface.log('error', 'Failed to process audio with STT API');
         }
     }
 

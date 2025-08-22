@@ -1,0 +1,80 @@
+[
+  {
+    "test": "Health Endpoint",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f09f2090>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7333868
+  },
+  {
+    "test": "Agents API",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/agents (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f088dee0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7342715
+  },
+  {
+    "test": "System Status",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/system/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f088e0c0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7350743
+  },
+  {
+    "test": "Metrics API",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/metrics (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f088e630>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7358553
+  },
+  {
+    "test": "Enhanced Team Formation",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/teams/form (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f088e810>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7367816
+  },
+  {
+    "test": "Analytics Endpoint",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/analytics (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f0e0e840>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7376008
+  },
+  {
+    "test": "Diagnostics API",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/diagnostics (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f088e630>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7383783
+  },
+  {
+    "test": "Voice APIs",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/tts (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f088e0f0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7393289
+  },
+  {
+    "test": "WebSocket Connection",
+    "passed": false,
+    "message": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'",
+    "timestamp": 1755902022.7531333
+  },
+  {
+    "test": "WebSocket Messaging",
+    "passed": false,
+    "message": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'",
+    "timestamp": 1755902022.7533908
+  },
+  {
+    "test": "Team Workflow",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/teams/form (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f0758dd0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7545311
+  },
+  {
+    "test": "Error Handling",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/agents/invalid_agent/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f0759220>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.7555218
+  },
+  {
+    "test": "API Performance",
+    "passed": false,
+    "message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/agents (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f71f0759640>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+    "timestamp": 1755902022.756416
+  }
+]
