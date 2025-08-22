@@ -35,7 +35,7 @@
 ### Архітектурні компоненти (високий рівень)
 
 - RAG-шар пам'яті: векторна БД (Qdrant або Milvus) + Redis.
-- Оркестрація: AutoGen/MetaGPT для агентної взаємодії; виконання довгих флоу через Orkes.
+- Оркестрація: AutoGen/MetaGPT як когнітивна оркестрація агентів; MSP Hub як платформа виконання (напр., Orkes на базі Netflix Conductor) для довгих і стійких робочих процесів.
 - Спостережуваність: Prometheus з Grafana.
 - Безпека: Falco для подій ядра/контейнерів; Secrets і RBAC у Kubernetes.
 - Інтеграції: Linear GraphQL API (issues/tasks), Playwright (automation).
@@ -55,6 +55,21 @@
 - embedding: float[]
 - metadata: { userId, ts, tags[] }
 
+#### Провайдери та моделі для LLM1 (дефолт + фолбек)
+
+- Підтримувані провайдери: OpenAI, Mistral, Google Gemini, Ollama (локально).
+- Дефолт (рекомендовано):
+  - OpenAI: gpt-4o-mini (баланс якості/затримки) або аналог класу 4.x mini.
+  - Альтернатива з низькою затримкою: Gemini 1.5 Flash / Mistral Small latest.
+  - Локально: Ollama llama3.1:8b-instruct або qwen2.5:7b-instruct.
+- Фолбек-ланцюг (приклад, редагується конфігом):
+  - openai:gpt-4o-mini → mistral:mistral-small-latest → gemini:gemini-1.5-flash → ollama:llama3.1:8b-instruct.
+- Налаштування (env):
+  - ATLAS_LLM1_PROVIDER, ATLAS_LLM1_MODEL, ATLAS_LLM1_API_BASE, ATLAS_LLM1_API_KEY
+  - ATLAS_LLM1_FALLBACKS (кома-сепаратед список у форматі provider:model)
+  - ATLAS_LLM_TIMEOUT_MS, ATLAS_LLM_RETRY_COUNT
+- Політика фолбеку: активується при таймауті/5xx/429; логуються всі спроби з вибраним провайдером/моделлю.
+
 ### LLM2 — оркестрація і інструменти
 
 - Підтримка локальної моделі через Ollama для приватності/затримок.
@@ -68,6 +83,16 @@
 - mutation CreateIssue(input: { title, description, priority, labelIds }): returns { id, url }
 - mutation UpdateIssue(id, input: { stateId, assigneeId, priority }): returns { id, state { name } }
 
+#### Провайдер і модель для LLM2 (строго)
+
+- Primary (обов'язково): локальна Ollama з моделлю gpt-oss:latest.
+- Віддалені провайдери в primary заборонені.
+- Фолбек (за потреби й лише за умов): OpenAI/Mistral/Gemini/Ollama (інші локальні моделі), дефолтний ланцюжок:
+  - ollama:gpt-oss:latest → openai:gpt-4o-mini → mistral:mistral-large-latest → gemini:gemini-1.5-pro.
+- Умови активації фолбеку: healthcheck локальної моделі провалюється N разів поспіль АБО явно встановлено ATLAS_LLM2_ALLOW_FALLBACK=true.
+- Налаштування (env): ATLAS_LLM2_PROVIDER=ollama, ATLAS_LLM2_MODEL=gpt-oss:latest, ATLAS_LLM2_FALLBACKS, ATLAS_LLM2_ALLOW_FALLBACK, ATLAS_LLM_TIMEOUT_MS.
+- Аудит: кожен відхід від локальної Ollama фіксується в журналах із причиною.
+
 ### LLM3 — нагляд і реакції
 
 - Вхід: події Falco у форматі JSON.
@@ -78,6 +103,17 @@
 
 - output, rule, priority, time, hostname
 - output_fields: { evt.type, proc.name, user.name, k8s.ns.name, k8s.pod.name, fd.sip, fd.sport }
+
+#### Провайдери та моделі для LLM3 (дефолт + фолбек)
+
+- Підтримувані провайдери: OpenAI, Mistral, Google Gemini, Ollama (локально).
+- Дефолт (рекомендовано для аналітики/пояснень із помірною вартістю):
+  - OpenAI: gpt-4o-mini або аналог 4.x mini.
+  - Mistral: mistral-small-latest (latency/cost), за потреби large.
+  - Gemini: 1.5-pro для детальних пояснень або 1.5-flash для швидких відповідей.
+  - Ollama: llama3.1:8b-instruct / qwen2.5:7b-instruct локально.
+- Фолбек-ланцюг (приклад): openai:gpt-4o-mini → gemini:gemini-1.5-flash → mistral:mistral-small-latest → ollama:llama3.1:8b-instruct.
+- Налаштування (env): ATLAS_LLM3_PROVIDER, ATLAS_LLM3_MODEL, ATLAS_LLM3_API_BASE, ATLAS_LLM3_API_KEY, ATLAS_LLM3_FALLBACKS, ATLAS_LLM_TIMEOUT_MS.
 
 ## Нефункціональні вимоги
 
@@ -130,6 +166,8 @@
 - SEC-01: Інсталювати Falco; прокинути події у LLM3; додати дії cordon/drain/pod delete.
 - GUI-01: Налаштувати безпечний запуск Playwright у Apple container або Kasm.
 - OPS-01: Secrets/RBAC: виділені ролі для інструментів; огляд аудит-логів.
+- CFG-01: Абстракція провайдерів LLM (OpenAI/Mistral/Gemini/Ollama) з єдиним інтерфейсом і фолбек-ланцюгом (LLM1/LLM3).
+- CFG-02: Жорстка прив'язка LLM2 до локальної Ollama gpt-oss:latest + healthcheck і контрольований фолбек.
 
 ## Критерії приймання (Acceptance)
 
@@ -137,6 +175,8 @@
 - Пам'ять: повторний запит через ≥24 години використовує релевантний контекст із векторної БД.
 - Falco-івент високого пріоритету → рішення LLM3 → застосовано обрану дію (dry-run/реально) і зафіксовано в логах.
 - Дашборд Grafana показує метрики: RT LLM1/2, обсяг пам'яті, к-ть подій Falco, успіхи оркестрації.
+- LLM1/LLM3: перемикання провайдера/моделі через env без змін коду; підтверджено роботою фолбек-ланцюга при симуляції відмови primary.
+- LLM2: за замовчуванням використовує локальну Ollama gpt-oss:latest; при примусовій симуляції відмови й дозволі фолбеку запускається наступний у ланцюжку та це логується.
 
 ## Ризики і пом'якшення
 
