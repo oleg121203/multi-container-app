@@ -3,11 +3,18 @@ Shared configuration and utilities for ATLAS agents
 """
 import os
 from typing import Dict, List, Optional
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
 class AtlasConfig(BaseSettings):
     """Global configuration for ATLAS system"""
+    
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore"  # Ignore extra fields from .env
+    )
     
     # Vector database settings (MEM-01)
     QDRANT_HOST: str = "qdrant"
@@ -43,10 +50,6 @@ class AtlasConfig(BaseSettings):
     
     # Monitoring
     PROMETHEUS_PORT: int = 8000
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 # Global config instance

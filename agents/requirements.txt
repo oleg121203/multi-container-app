@@ -2,6 +2,7 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==2.5.0
+pydantic-settings==2.2.1
 python-dotenv==1.0.0
 
 # RAG and vector storage (MEM-01)
@@ -21,9 +22,9 @@ anthropic==0.8.1
 google-generativeai==0.3.2
 ollama==0.1.7
 
-# AutoGen for LLM2 orchestration (ORC-01)
-pyautogen==0.2.0
-autogen==0.2.0
+# AutoGen for LLM2 orchestration (ORC-01) - commented out due to compatibility issues
+# pyautogen==0.2.0
+# autogen==0.2.0
 
 # Linear API integration
 gql==3.4.1
