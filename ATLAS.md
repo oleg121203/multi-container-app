@@ -8,6 +8,7 @@
 - Дані пам'яті: спеціалізована векторна БД (Qdrant або Milvus) + Redis як семантичний кеш/сесії.
 - Інфраструктура: перехід з Docker Compose на Kubernetes (Kompose + допрацювання), StatefulSet для БД, моніторинг Prometheus+Grafana, секрети через Kubernetes Secrets, доступ через RBAC.
 - Автоматизація macOS/GUI: безпечний запуск Playwright у ізольованих контейнерах (Apple container) або браузерні робочі простори (Kasm).
+- Динамічні команди агентів: реєстр агентів і конструктор команд (AutoGen/MetaGPT) з автопризначенням ролей/персон і затвердженням користувачем.
 
 ## Обсяг і цілі
 
@@ -35,10 +36,173 @@
 ### Архітектурні компоненти (високий рівень)
 
 - RAG-шар пам'яті: векторна БД (Qdrant або Milvus) + Redis.
-- Оркестрація: AutoGen/MetaGPT як когнітивна оркестрація агентів; MSP Hub як платформа виконання (напр., Orkes на базі Netflix Conductor) для довгих і стійких робочих процесів.
+- Оркестрація: AutoGen/MetaGPT як когнітивна оркестрація агентів; MCP Hub — федерація інструментів через Model Context Protocol (контейнеризовані MCP-сервери: Playwright MCP, Automation MCP тощо). Для довготривалих і надійних бізнес-процесів опційно — Orkes (Netflix Conductor).
 - Спостережуваність: Prometheus з Grafana.
 - Безпека: Falco для подій ядра/контейнерів; Secrets і RBAC у Kubernetes.
 - Інтеграції: Linear GraphQL API (issues/tasks), Playwright (automation).
+
+#### MCP Hub — модульні MCP-сервери (контейнери)
+
+- Призначення: «касетний» шар інструментів. Будь-який MCP-сервер додається окремим контейнером і автоматично стає доступним агентам через клієнт MCP.
+- Приклади серверів:
+  - Playwright MCP (браузерна автоматизація),
+  - Automation MCP (загальні задачі автоматизації/інтеграцій),
+  - macOS Automator MCP Server (оркестрація нативних дій macOS через Automator/Shortcuts),
+  - TTS MCP (голос: blacktop/mcp-tts із кількома провайдерами),
+  - Filesystem/Git/HTTP MCP, Browser MCP тощо.
+- Дисквері/підключення: LLM2 містить MCP-клієнт, який читає реєстр серверів із env і встановлює з’єднання (HTTP/WebSocket) до кожного з них.
+- Кросплатформеність: усі MCP-сервери контейнеризовані (Linux/macOS/Windows). Для headful-браузера — Kasm або Apple container на macOS.
+- Конфігурація (env, узгоджений патерн):
+  - ATLAS_MCP_SERVERS=playwright,automation,automator,tts,git
+  - Для кожного: ATLAS_MCP_{NAME}_ENABLED=true|false, ATLAS_MCP_{NAME}_URL або HOST/PORT,
+    ATLAS_MCP_{NAME}_AUTH_* (ключі), ATLAS_MCP_{NAME}_OPTS (додаткові прапори)
+- Ескіз docker-compose (довідково):
+
+  ```yaml
+  services:
+    mcp-playwright:
+      image: ghcr.io/example/playwright-mcp:latest
+      ports: ["4001:4001"]
+      environment:
+        - MCP_PORT=4001
+        - PLAYWRIGHT_CHROMIUM=true
+    mcp-automation:
+      image: ghcr.io/example/automation-mcp:latest
+      ports: ["4002:4002"]
+    mcp-automator:
+      image: ghcr.io/example/macos-automator-mcp:latest
+      # За потреби: привілеї для доступу до Automator/Shortcuts на macOS-host з ізоляцією
+      ports: ["4003:4003"]
+  
+    llm2-orchestrator:
+      # ...існуюча конфігурація LLM2...
+      environment:
+        - ATLAS_MCP_SERVERS=playwright,automation,automator
+        - ATLAS_MCP_PLAYWRIGHT_URL=http://mcp-playwright:4001
+        - ATLAS_MCP_AUTOMATION_URL=http://mcp-automation:4002
+        - ATLAS_MCP_AUTOMATOR_URL=http://mcp-automator:4003
+  - ATLAS_MCP_TTS_URL=http://mcp-tts:4004
+  ```
+
+- Безпека: ключі доступу в Kubernetes Secrets; мережеві політики обмежують доступ лише з сервісу LLM2. Логи доступів — у спільний стек спостережуваності.
+- Взаємодія з Orkes (опційно): MCP — це «інструменти», Orkes — «процеси» (довгі/надійні). Можуть співіснувати.
+
+##### Політика вибору інструментів і телеметрія
+
+- «Два MCP управління macOS»: Automation MCP і macOS Automator MCP розглядаються як інструменти схожого призначення. Система збирає метрики (успіх/помилки, затримка, кроки/витрати) і автоматично обирає кращий для конкретного типу задачі.
+- Маршрутизація: правило за замовчуванням — спробувати інструмент із кращою історичною метрикою успіху для даного intent; фолбек — альтернативний MCP.
+- Телеметрія: експортувати лічильники у Prometheus з лейблами mcp_name, action, success, latency_ms; дашборд порівнює ефективність інструментів одного призначення.
+
+##### MCP TTS (обов'язково)
+
+- Сервер: TTS MCP від blacktop (mcp-tts). Дозволяє «хто говорить» серед агентів та вибір провайдера TTS із фолбеком.
+- Провайдери: say_tts, elevenlabs_tts, google_tts, openai_tts, а також coqui_tts (через локальний Coqui TTS server).
+- Конфігурація (env):
+  - ATLAS_TTS_PROVIDERS=say_tts,openai_tts,elevenlabs_tts,google_tts,coqui_tts (порядок = фолбек-ланцюг)
+  - Для провайдерів: OPENAI_API_KEY, ELEVENLABS_API_KEY, GOOGLE_TTS_API_KEY тощо
+  - Для Coqui: `COQUI_TTS_BASE_URL=http://coqui-tts:5002`
+  - Прив'язка голосів до агентів (приклад): ATLAS_TTS_AGENT_VOICE_LLM1=voiceA, ATLAS_TTS_AGENT_VOICE_LLM2=voiceB, ATLAS_TTS_AGENT_VOICE_LLM3=voiceC
+- Ескіз docker-compose доповнення:
+
+  ```yaml
+    mcp-tts:
+      image: ghcr.io/blacktop/mcp-tts:latest
+      ports: ["4004:4004"]
+      environment:
+        - MCP_PORT=4004
+        - ATLAS_TTS_PROVIDERS=say_tts,openai_tts,elevenlabs_tts,google_tts,coqui_tts
+        - COQUI_TTS_BASE_URL=http://coqui-tts:5002
+        - OPENAI_API_KEY=${OPENAI_API_KEY}
+        - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+        - GOOGLE_TTS_API_KEY=${GOOGLE_TTS_API_KEY}
+      depends_on:
+        - coqui-tts
+
+    coqui-tts:
+      image: ghcr.io/coqui-ai/tts-cpu:latest
+      ports: ["5002:5002"]
+      command: ["python3", "TTS/server/server.py", "--model_name", "tts_models/en/vctk/vits"]
+  ```
+
+- Зауваження: якщо офіційний образ mcp-tts відсутній або потрібно додати coqui_tts як новий провайдер — дозволено створити тонкий «шлюз» усередині mcp-tts, що перенаправляє запити до COQUI_TTS_BASE_URL.
+
+Безпека/приватність аудіо: TTS може відправляти текст/аудіо провайдерам поза кластером. Використовуйте окремі ключі, обмежуйте мережеві правила (NetworkPolicy), вмикайте анонімізацію тексту за потреби та зберігання аудіо — тільки у внутрішніх сховищах.
+
+Мінімальний контракт TTS MCP (узагальнено):
+
+- POST /speak { text, voice, agent, provider? } → { url | bytes }
+- GET /voices → { voices: string[] }
+- GET /health → { status: "ok" }
+- Метрики: Prometheus counters/gauges з лейблами provider, agent, voice, success; гістрограма latency_ms.
+
+
+##### Платформа «Реєстр агентів і Конструктор команд» (AutoGen/MetaGPT)
+
+- Призначення: динамічно формувати «робочі групи» під довготривалі задачі. Користувач задає лише імена агентів (5–20), обирає провайдера/модель і вводить API‑ключі; система автоматично призначає ролі, поведінку/персону, дозволені інструменти.
+- Базова статична команда: попередньо визначена команда на випадок швидких задач або коли динаміка не потрібна.
+- Динамічні команди: для кожної задачі — оцінка домену/складності/тривалості → вибір ролей і підбір агентів із реєстру.
+- Оркестрація: AutoGen/MetaGPT координує міжагентну взаємодію; для довгих процесів — Orkes (workflow), інструменти — через MCP Hub.
+
+Ролі (приклади шаблонів):
+
+- Lead/Coordinator, Planner, Researcher, Coder, Reviewer, Ops/SRE, SecOps, QA, PM/Scribe.
+
+Зберігання і конфіг:
+
+- Реєстр агентів: JSON/YAML або БД. Шлях за змовчанням: `ATLAS_AGENT_REGISTRY_PATH`.
+- Шаблони ролей/персон: YAML у `ATLAS_ROLE_TEMPLATES_PATH`.
+- Секрети (API‑ключі) — тільки через Secrets (K8s/ENV), шифрування в покої рекомендовано.
+
+Мінімальні схеми (приклад):
+
+```json
+{
+  "agents": [
+    {
+      "name": "Олег",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "apiKeyRef": "OPENAI_API_KEY",
+      "skills": ["coding", "planning"],
+      "tools": ["playwright", "git", "tts"]
+    }
+  ],
+  "teams": [
+    {
+      "name": "base-static",
+      "members": ["Олег", "Ірина", "Марк"],
+      "roles": {"Олег": "Lead", "Ірина": "Coder", "Марк": "Reviewer"}
+    }
+  ]
+}
+```
+
+API (узагальнено):
+
+- POST /agents { name, provider, model, apiKeyRef|apiKey, skills?, tools? } → { id }
+- POST /teams { name, members[], strategy: "static"|"dynamic", roleTemplates? } → { id }
+- POST /team/build { taskId, strategy?, constraints? } → { teamId, members: [{name, role}] }
+- POST /team/approve { teamId, changes? } → { status }
+
+Поведенчі політики:
+
+- Автопризначення ролей за шаблонами + підсилення «персони» через системні промпти.
+- Gate «людина-в-петлі»: перед запуском — підтвердження команди користувачем або правки.
+- Guardrails: ліміти вартості/запитів, rate limiting, аудит.
+
+
+##### Базовий пакет MCP (рекомендація)
+
+- Ціль: «укріпити» систему стартовим набором інструментів, який покриває часті потреби.
+- Склад (може бути адаптований агентом на власний розсуд):
+  - Playwright MCP (браузерні сценарії),
+  - Automation MCP (загальна автоматизація/інтеграції),
+  - macOS Automator MCP (нативні дії на macOS),
+  - TTS MCP (mcp-tts) із провайдерами та coqui_tts як локальним фолбеком,
+  - Redis MCP або адаптер до Redis (якщо потрібні черги/кеш),
+  - Buffer/Memory MCP (простий in‑memory буфер як тимчасове сховище проміжних артефактів),
+  - Filesystem/Git/HTTP MCP (робота з файлами, VCS, HTTP).
+- Примітка: якщо готового MCP‑сервера для Redis/Buffer немає, агент додає тонкий адаптер (обгортку) або еквівалентний інструмент.
 
 ## Функціональні вимоги (контракти)
 
@@ -155,6 +319,12 @@
 - LLM3 підключений до потоку Falco, класифікація подій, мінімум 2 автоматизовані реакції.
 - Безпечне виконання Playwright-сценарію в ізольованому контейнері.
 
+### Фаза 4 — Teams & TTS (DoD)
+
+- Реєстр агентів і базова статична команда працюють (CRUD + конфіги ролей/персон).
+- Динамічне складання команди під задачу через AutoGen/MetaGPT з підтвердженням користувача.
+- Мапінг голосів TTS до LLM1/2/3, працює фолбек провайдерів; метрики експортуються в Prometheus.
+
 ## Беклог задач для агента кодування
 
 - INF-01: Додати docker-compose сервіси для Qdrant/Milvus і Redis з персистентністю.
@@ -168,6 +338,17 @@
 - OPS-01: Secrets/RBAC: виділені ролі для інструментів; огляд аудит-логів.
 - CFG-01: Абстракція провайдерів LLM (OpenAI/Mistral/Gemini/Ollama) з єдиним інтерфейсом і фолбек-ланцюгом (LLM1/LLM3).
 - CFG-02: Жорстка прив'язка LLM2 до локальної Ollama gpt-oss:latest + healthcheck і контрольований фолбек.
+- MCP-01: Зібрати MCP Hub: додати контейнерні MCP-сервери (Playwright MCP, Automation MCP), реєстр через ATLAS_MCP_SERVERS, підключення з LLM2.
+- MCP-02: Додати macOS Automator MCP Server і об'єднати з Automation MCP як «два MCP управління macOS».
+- MCP-03: Реалізувати політику авто-вибору MCP за метриками (success rate/latency) з Prometheus-експортерами.
+- MCP-04: Базовий пакет MCP: Playwright, Automation, Automator, Redis/Buffer, FS/Git/HTTP; .env.example з ATLAS_MCP_*.
+- MCP-05: Інтегрувати TTS MCP (mcp-tts) з провайдерами say/elevenlabs/google/openai та coqui_tts через локальний Coqui server.
+- MCP-06: Зв'язати голоси з агентами (LLM1/2/3) через env та забезпечити фолбек провайдера.
+- TEAM-01: Реєстр агентів (CRUD + зберігання): моделі, API, інтеграція з Secrets.
+- TEAM-02: Рольові шаблони/персони (YAML) і автопризначення ролей.
+- TEAM-03: Побудова динамічної команди (AutoGen/MetaGPT) за task intent + gate на підтвердження.
+- TEAM-04: Інтеграція з Orkes для довгих задач (workflow) + MCP Hub для інструментів.
+- TEAM-05: Дашборд ефективності команд: тривалість, успішність, вартість по ролях/провайдерах.
 
 ## Критерії приймання (Acceptance)
 
@@ -177,6 +358,12 @@
 - Дашборд Grafana показує метрики: RT LLM1/2, обсяг пам'яті, к-ть подій Falco, успіхи оркестрації.
 - LLM1/LLM3: перемикання провайдера/моделі через env без змін коду; підтверджено роботою фолбек-ланцюга при симуляції відмови primary.
 - LLM2: за замовчуванням використовує локальну Ollama gpt-oss:latest; при примусовій симуляції відмови й дозволі фолбеку запускається наступний у ланцюжку та це логується.
+- MCP Hub: при заданих ATLAS_MCP_SERVERS LLM2 успішно підключається щонайменше до Playwright MCP і виконує один сценарій (наприклад, відкриття URL і зняття скріншоту), подія фіксується у логах.
+- «Два MCP управління macOS»: і Automation MCP, і macOS Automator MCP доступні; система виконує один і той самий намір через обидва, збирає метрики і обирає кращий інструмент при повторі.
+- Дашборд «Ефективність MCP»: є панель у Grafana з порівнянням success/latency по mcp_name для інструментів однакового призначення.
+- TTS MCP: LLM‑агенти можуть «говорити» з вибраними голосами; при відмові primary‑провайдера TTS спрацьовує фолбек (зокрема coqui_tts через локальний сервер) і подія логуються.
+- Команди: користувач вказує лише імена + провайдер/модель/ключі; система формує команду, пропонує ролі, отримує підтвердження і запускає виконання.
+- Динаміка: для нової задачі будується команда за intent; для простої — доступна базова статична команда.
 
 ## Ризики і пом'якшення
 
@@ -207,7 +394,7 @@
 ## Додаток A. Мінімальні артефакти, що очікуються
 
 - Інфра: папка k8s/ з маніфестами (deploy/statefulset/service/ingress/pvc), values/ для параметрів.
-- Код: модулі агентів (LLM1/2/3) із конфігами; адаптери до Linear/Falco/Orkes/Playwright.
+- Код: модулі агентів (LLM1/2/3) із конфігами; адаптери до Linear/Falco/Orkes/Playwright  і так далі...
 - Документація: README з запуском, дашборди Grafana.json, приклади подій Falco, схеми колекцій RAG.
 
 ## Примітка

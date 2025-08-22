@@ -34,5 +34,38 @@ services:
     ports:
       - 27017:27017
 
+  # MCP: Text-to-Speech server (blacktop/mcp-tts) + local Coqui TTS backend
+  mcp-tts:
+    image: ghcr.io/blacktop/mcp-tts:latest
+    ports:
+      - "4004:4004"
+    environment:
+      MCP_PORT: "4004"
+      ATLAS_TTS_PROVIDERS: "say_tts,openai_tts,elevenlabs_tts,google_tts,coqui_tts"
+      COQUI_TTS_BASE_URL: "http://coqui-tts:5002"
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      # GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY}
+    depends_on:
+      - coqui-tts
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  coqui-tts:
+    image: ghcr.io/coqui-ai/tts-cpu:latest
+    ports:
+      - "5002:5002"
+    environment:
+      COQUI_TTS_MODEL: ${COQUI_TTS_MODEL:-tts_models/multilingual/multi-dataset/xtts_v2}
+    command: ["python3", "TTS/server/server.py", "--model_name", "${COQUI_TTS_MODEL:-tts_models/multilingual/multi-dataset/xtts_v2}"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5002"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
 #volumes:
   #database:
