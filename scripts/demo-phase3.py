@@ -7,14 +7,26 @@ This script demonstrates the Phase 3 functionality including:
 - Playwright browser automation
 - LLM3 security monitoring with Falco integration
 - TTS/STT voice capabilities
+
+Note: This demo script requires the Phase 3 services to be running.
+Run './scripts/setup-phase3.sh' first to start all services.
 """
 
 import asyncio
-import aiohttp
 import json
 import time
 import logging
+import os
 from typing import Dict, Any
+
+# Check for aiohttp availability
+try:
+    import aiohttp
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
+    print("⚠️  Warning: aiohttp not available. Install with: pip install aiohttp")
+    print("Running in limited mode without HTTP client functionality.")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -37,6 +49,11 @@ class Phase3Demo:
     async def run_demo(self):
         """Run the complete Phase 3 demo"""
         logger.info("🚀 Starting ATLAS Phase 3 Demo")
+        
+        if not HAS_AIOHTTP:
+            logger.warning("Running in limited mode due to missing aiohttp dependency")
+            await self.demo_limited_mode()
+            return
         
         try:
             # Test service health
@@ -292,6 +309,11 @@ class Phase3Demo:
         logger.info("\n📊 Demo Summary Report")
         logger.info("=" * 50)
         
+        if not HAS_AIOHTTP:
+            logger.info("Report generation requires aiohttp dependency")
+            logger.info("Install with: pip install aiohttp")
+            return
+        
         async with aiohttp.ClientSession() as session:
             # Collect service status
             services_status = {}
@@ -331,6 +353,28 @@ class Phase3Demo:
         logger.info("  • LLM3 security event processing")
         logger.info("  • Voice capabilities (TTS/STT)")
         logger.info("  • End-to-end orchestration")
+
+    async def demo_limited_mode(self):
+        """Demo functionality without aiohttp dependency"""
+        logger.info("\n📋 Phase 3 Demo - Limited Mode")
+        logger.info("=" * 50)
+        
+        logger.info("\n🏗️  Phase 3 Architecture Overview:")
+        logger.info("  • MCP-01: MCP Hub for service orchestration")
+        logger.info("  • GUI-01: Playwright automation for browser interaction")
+        logger.info("  • SEC-01: LLM3 security monitoring with Falco integration")
+        logger.info("  • MCP-05/06: Voice capabilities with TTS/STT")
+        
+        logger.info("\n📊 Service Configuration:")
+        for service, url in self.base_urls.items():
+            logger.info(f"  • {service}: {url}")
+        
+        logger.info("\n🔧 To run full demo:")
+        logger.info("  1. Install dependencies: pip install aiohttp")
+        logger.info("  2. Start services: ./scripts/setup-phase3.sh")
+        logger.info("  3. Run demo: python scripts/demo-phase3.py")
+        
+        logger.info("\n✅ Phase 3 components are implemented and ready for testing")
 
 
 async def main():
