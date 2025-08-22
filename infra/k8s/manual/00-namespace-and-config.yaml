@@ -19,7 +19,7 @@ data:
   MCP_PORT: "4004"
   COQUI_TTS_MODEL: "tts_models/multilingual/multi-dataset/xtts_v2"
 ---
-apiVersion: v1
+apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: atlas-storage
