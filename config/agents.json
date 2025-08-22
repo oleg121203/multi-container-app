@@ -1,0 +1,142 @@
+{
+  "agents": [
+    {
+      "id": "llm1-agent",
+      "name": "LLM1 User Interface Agent",
+      "url": "http://llm1-agent:8001",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "user_interaction",
+          "category": "interface",
+          "description": "Handle user queries and interactions"
+        },
+        {
+          "name": "rag_search",
+          "category": "knowledge",
+          "description": "Perform RAG-based knowledge retrieval"
+        },
+        {
+          "name": "session_management",
+          "category": "state",
+          "description": "Manage user sessions and context"
+        }
+      ],
+      "metadata": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "primary_function": "user_interface"
+      }
+    },
+    {
+      "id": "llm2-orchestrator",
+      "name": "LLM2 Orchestrator Agent",
+      "url": "http://llm2-agent:8002",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "orchestration",
+          "category": "coordination",
+          "description": "Orchestrate multi-agent workflows"
+        },
+        {
+          "name": "task_planning",
+          "category": "planning",
+          "description": "Create and execute task plans"
+        },
+        {
+          "name": "linear_integration",
+          "category": "automation",
+          "description": "Create and manage Linear issues"
+        }
+      ],
+      "metadata": {
+        "provider": "ollama",
+        "model": "gpt-oss:latest",
+        "primary_function": "orchestration"
+      }
+    },
+    {
+      "id": "llm3-security",
+      "name": "LLM3 Security Agent",
+      "url": "http://llm3-agent:8003",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "security_monitoring",
+          "category": "monitoring",
+          "description": "Monitor and analyze security events"
+        },
+        {
+          "name": "threat_analysis",
+          "category": "analysis",
+          "description": "Analyze security threats and vulnerabilities"
+        },
+        {
+          "name": "incident_response",
+          "category": "automation",
+          "description": "Respond to security incidents"
+        }
+      ],
+      "metadata": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "primary_function": "security"
+      }
+    },
+    {
+      "id": "mcp-playwright",
+      "name": "Playwright Browser Automation",
+      "url": "http://mcp-playwright:4001",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "browser_automation",
+          "category": "automation",
+          "description": "Automate web browser interactions"
+        },
+        {
+          "name": "web_scraping",
+          "category": "data_collection",
+          "description": "Extract data from web pages"
+        },
+        {
+          "name": "ui_testing",
+          "category": "testing",
+          "description": "Perform automated UI testing"
+        }
+      ],
+      "metadata": {
+        "type": "mcp_server",
+        "primary_function": "browser_automation"
+      }
+    },
+    {
+      "id": "mcp-tts",
+      "name": "Text-to-Speech Service",
+      "url": "http://mcp-tts:4004",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "text_to_speech",
+          "category": "audio",
+          "description": "Convert text to speech audio"
+        },
+        {
+          "name": "voice_synthesis",
+          "category": "generation",
+          "description": "Synthesize natural-sounding voices"
+        }
+      ],
+      "metadata": {
+        "type": "mcp_server",
+        "primary_function": "tts"
+      }
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2025-01-22",
+    "description": "ATLAS Phase 4 Agent Registry Configuration"
+  }
+}
