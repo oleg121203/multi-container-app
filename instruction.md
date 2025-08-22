@@ -149,11 +149,1217 @@ TTS/STT інтеграція (MCP TTS/STT):
 
 Кроки: CRUD Agent Registry, YAML templates для ролей, AutoGen/MetaGPT integration для team construction з human-in-the-loop.
 
-#### UI-01 — Мінімалістична перша сторінка (hacker theme) з 3D‑головою Atlas
+#### UI-01 — ATLAS Web Interface (Comprehensive Implementation Guide)
 
-Мета: одна публічна сторінка для користувача у стилі «хакерського термінала» (темний/неон),
-із центровою 3D‑головою Atlas та базовим TTS‑озвученням.
-Адмін‑панель прихована (доступ лише вибраним, у межах майбутнього UI).
+**ATLAS Web Interface Implementation Guide**
+
+This section provides a complete implementation guide for the ATLAS multi-agent orchestration platform web interface, building upon the successful Phase 4 backend implementation (Agent Registry, Dynamic Team Constructor, Live Debate Mode, Role Templates System, and Orchestration Patterns).
+
+## Web Interface Overview
+
+**Objective:** Create a comprehensive web-based management interface that provides:
+- **Agent Management**: View, configure, and control agents
+- **Team Visualization**: Real-time monitoring of dynamic team formation 
+- **Task Monitoring**: Live tracking of task execution and orchestration
+- **Performance Analytics**: Dashboards and metrics for system performance
+- **3D Avatar Interface**: Central ATLAS avatar with hacker-theme design
+- **Real-time Communication**: Chat interface with TTS/STT capabilities
+
+## Architecture & Design
+
+### Frontend Architecture
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ATLAS Web UI (UI-01)                     │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌──────────────────┐ │
+│  │  Chat Panel     │ │  3D Avatar      │ │  Server Logs     │ │
+│  │  (Left)         │ │  (Center)       │ │  (Right)         │ │
+│  └─────────────────┘ └─────────────────┘ └──────────────────┘ │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │              Status Bar (Bottom)                        │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Backend API Layer (FastAPI)                   │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌──────────────────┐ │
+│  │  Agent Registry │ │  Team Builder   │ │  Task Monitor    │ │
+│  │  API            │ │  API            │ │  API             │ │
+│  └─────────────────┘ └─────────────────┘ └──────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Design Theme: "Hacker Terminal"
+- **Color Scheme**: Black background (#000) with neon green accents (#00ff66)
+- **Typography**: Monospace fonts (Menlo, Consolas) for technical aesthetic
+- **Layout**: Grid-based layout with terminal-style panels
+- **Animation**: Subtle glow effects and smooth transitions
+- **Responsiveness**: Adaptive layout for desktop and tablet viewing
+
+## Implementation Components
+
+### 1. Backend API Server
+
+**Location:** `web/api/server.py`
+
+Create a FastAPI server that integrates with existing Phase 4 components:
+
+```python
+# web/api/server.py
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+import asyncio
+from typing import List, Dict
+import json
+
+# Import existing Phase 4 components
+from agents.registry.agent_registry import AgentRegistry
+from agents.registry.team_constructor import TeamConstructor
+from agents.shared.config import ATLAS_AGENT_REGISTRY_PATH
+
+app = FastAPI(title="ATLAS Web Interface API")
+
+# Initialize Phase 4 components
+agent_registry = AgentRegistry(ATLAS_AGENT_REGISTRY_PATH)
+team_constructor = TeamConstructor(agent_registry)
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message))
+            except:
+                pass
+
+manager = ConnectionManager()
+
+# API Endpoints
+@app.get("/api/agents")
+async def get_agents():
+    """Get all registered agents"""
+    await agent_registry.initialize()
+    return {"agents": agent_registry.agents}
+
+@app.get("/api/agents/{agent_id}/status")
+async def get_agent_status(agent_id: str):
+    """Get real-time agent status"""
+    agent = agent_registry.get_agent(agent_id)
+    if agent:
+        status = await agent_registry.health_monitor.check_agent_health(agent_id)
+        return {"agent_id": agent_id, "status": status}
+    return {"error": "Agent not found"}
+
+@app.post("/api/teams/form")
+async def form_team(task_description: dict):
+    """Form a dynamic team for a task"""
+    team = await team_constructor.form_team(task_description["description"])
+    return {"team": team}
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """Get overall system status"""
+    return {
+        "agent_registry": "active",
+        "team_constructor": "active", 
+        "mcp_hub": "active",
+        "llm1": "active",
+        "llm2": "active", 
+        "llm3": "active"
+    }
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle real-time communication
+            await manager.broadcast({"type": "chat", "data": data})
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+# Serve static files
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
+app.mount("/", StaticFiles(directory="web/frontend", html=True), name="frontend")
+```
+
+### 2. Enhanced Frontend Implementation
+
+**Location:** `web/frontend/`
+
+Expand the existing 3D head implementation into a complete interface:
+
+#### HTML Structure (`web/frontend/index.html`)
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATLAS - Multi-Agent Orchestration Platform</title>
+    <link rel="stylesheet" href="/static/css/atlas-ui.css">
+    <script src="https://unpkg.com/three@0.159.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.159.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+    <div class="atlas-interface">
+        <!-- Left Panel: Chat & Agent Management -->
+        <aside class="chat-panel">
+            <header class="panel-header">
+                <h2>SMART_CHAT_SYSTEM</h2>
+                <button class="btn-atlas">ATLAS</button>
+            </header>
+            
+            <section class="chat-history" id="chatHistory">
+                <div class="system-message">
+                    ATLAS Web Interface v1.0 - Multi-Agent Orchestration Platform
+                </div>
+            </section>
+            
+            <section class="agent-list" id="agentList">
+                <h3>Active Agents</h3>
+                <div class="agents-grid" id="agentsGrid"></div>
+            </section>
+            
+            <footer class="chat-input-area">
+                <input type="text" id="messageInput" placeholder="Enter command or message..." />
+                <div class="control-buttons">
+                    <button class="btn" id="sendBtn">SEND</button>
+                    <button class="btn" id="voiceBtn">MIC</button>
+                    <button class="btn" id="ttsBtn">TTS</button>
+                    <button class="btn" id="teamBtn">FORM TEAM</button>
+                </div>
+            </footer>
+        </aside>
+
+        <!-- Center Panel: 3D Avatar -->
+        <main class="avatar-stage">
+            <div class="avatar-container" id="avatarContainer">
+                <canvas id="avatarCanvas"></canvas>
+                <div class="avatar-status">
+                    <div class="pulse-indicator"></div>
+                    <span id="avatarStatusText">ATLAS Online</span>
+                </div>
+            </div>
+            
+            <div class="team-visualization" id="teamViz">
+                <h3>Active Team</h3>
+                <div class="team-members" id="teamMembers"></div>
+            </div>
+        </main>
+
+        <!-- Right Panel: System Logs & Monitoring -->
+        <aside class="logs-panel">
+            <header class="panel-header">
+                <h2>SYSTEM_LOGS</h2>
+                <select id="logFilter">
+                    <option value="all">All Levels</option>
+                    <option value="error">ERROR</option>
+                    <option value="warn">WARN</option>
+                    <option value="info">INFO</option>
+                </select>
+            </header>
+            
+            <section class="logs-display" id="logsDisplay"></section>
+            
+            <section class="metrics-panel">
+                <h3>Performance Metrics</h3>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <span class="metric-label">Active Agents</span>
+                        <span class="metric-value" id="activeAgentsCount">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Teams Formed</span>
+                        <span class="metric-value" id="teamsFormedCount">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Tasks Completed</span>
+                        <span class="metric-value" id="tasksCompletedCount">0</span>
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-indicators">
+            <span class="status-indicator active" data-service="registry">● Agent Registry</span>
+            <span class="status-indicator active" data-service="llm1">● LLM1</span>
+            <span class="status-indicator active" data-service="llm2">● LLM2</span>
+            <span class="status-indicator active" data-service="llm3">● LLM3</span>
+            <span class="status-indicator active" data-service="mcp">● MCP Hub</span>
+            <span class="status-indicator active" data-service="tts">● TTS</span>
+        </div>
+        <div class="connection-status">
+            <span id="connectionStatus">Connected</span>
+        </div>
+    </footer>
+
+    <script type="module" src="/static/js/atlas-interface.js"></script>
+</body>
+</html>
+```
+
+#### JavaScript Application (`web/frontend/static/js/atlas-interface.js`)
+```javascript
+class ATLASInterface {
+    constructor() {
+        this.websocket = null;
+        this.agents = new Map();
+        this.currentTeam = null;
+        this.avatar = null;
+        this.initialize();
+    }
+
+    async initialize() {
+        await this.setupWebSocket();
+        await this.initializeAvatar();
+        await this.loadAgents();
+        this.setupEventListeners();
+        this.startStatusUpdates();
+    }
+
+    async setupWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        
+        this.websocket = new WebSocket(wsUrl);
+        
+        this.websocket.onopen = () => {
+            this.updateConnectionStatus('Connected');
+            this.log('info', 'WebSocket connection established');
+        };
+        
+        this.websocket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            this.handleWebSocketMessage(message);
+        };
+        
+        this.websocket.onclose = () => {
+            this.updateConnectionStatus('Disconnected');
+            this.log('error', 'WebSocket connection lost');
+            // Attempt reconnection
+            setTimeout(() => this.setupWebSocket(), 5000);
+        };
+    }
+
+    async initializeAvatar() {
+        const canvas = document.getElementById('avatarCanvas');
+        const container = document.getElementById('avatarContainer');
+        
+        this.avatar = new ATLASAvatar(canvas, container);
+        await this.avatar.initialize();
+    }
+
+    async loadAgents() {
+        try {
+            const response = await fetch('/api/agents');
+            const data = await response.json();
+            
+            this.agents.clear();
+            data.agents.forEach(agent => {
+                this.agents.set(agent.name, agent);
+            });
+            
+            this.renderAgentsList();
+        } catch (error) {
+            this.log('error', `Failed to load agents: ${error.message}`);
+        }
+    }
+
+    renderAgentsList() {
+        const container = document.getElementById('agentsGrid');
+        container.innerHTML = '';
+        
+        this.agents.forEach((agent, name) => {
+            const agentElement = document.createElement('div');
+            agentElement.className = 'agent-card';
+            agentElement.innerHTML = `
+                <div class="agent-name">${name}</div>
+                <div class="agent-status" data-status="${agent.status || 'unknown'}">
+                    ● ${agent.status || 'Unknown'}
+                </div>
+                <div class="agent-capabilities">
+                    ${agent.capabilities.slice(0, 3).map(cap => 
+                        `<span class="capability-tag">${cap}</span>`
+                    ).join('')}
+                </div>
+            `;
+            container.appendChild(agentElement);
+        });
+    }
+
+    setupEventListeners() {
+        // Send message
+        document.getElementById('sendBtn').addEventListener('click', () => {
+            this.sendMessage();
+        });
+        
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.sendMessage();
+            }
+        });
+        
+        // Form team
+        document.getElementById('teamBtn').addEventListener('click', () => {
+            this.openTeamFormationDialog();
+        });
+        
+        // Log filtering
+        document.getElementById('logFilter').addEventListener('change', (e) => {
+            this.filterLogs(e.target.value);
+        });
+    }
+
+    sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value.trim();
+        
+        if (message) {
+            this.addChatMessage('user', message);
+            
+            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                this.websocket.send(JSON.stringify({
+                    type: 'chat',
+                    message: message,
+                    timestamp: new Date().toISOString()
+                }));
+            }
+            
+            input.value = '';
+        }
+    }
+
+    async openTeamFormationDialog() {
+        const taskDescription = prompt('Describe the task for team formation:');
+        if (taskDescription) {
+            try {
+                const response = await fetch('/api/teams/form', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description: taskDescription })
+                });
+                
+                const data = await response.json();
+                this.currentTeam = data.team;
+                this.renderTeamVisualization();
+                this.log('info', `Team formed: ${data.team.members.length} members`);
+            } catch (error) {
+                this.log('error', `Team formation failed: ${error.message}`);
+            }
+        }
+    }
+
+    renderTeamVisualization() {
+        const container = document.getElementById('teamMembers');
+        container.innerHTML = '';
+        
+        if (this.currentTeam && this.currentTeam.members) {
+            this.currentTeam.members.forEach(member => {
+                const memberElement = document.createElement('div');
+                memberElement.className = 'team-member';
+                memberElement.innerHTML = `
+                    <div class="member-name">${member.name}</div>
+                    <div class="member-role">${member.role}</div>
+                `;
+                container.appendChild(memberElement);
+            });
+        }
+    }
+
+    addChatMessage(sender, content) {
+        const chatHistory = document.getElementById('chatHistory');
+        const messageElement = document.createElement('div');
+        messageElement.className = `chat-message ${sender}`;
+        messageElement.innerHTML = `
+            <div class="message-sender">${sender.toUpperCase()}</div>
+            <div class="message-content">${content}</div>
+            <div class="message-time">${new Date().toLocaleTimeString()}</div>
+        `;
+        chatHistory.appendChild(messageElement);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    log(level, message) {
+        const logsDisplay = document.getElementById('logsDisplay');
+        const logElement = document.createElement('div');
+        logElement.className = `log-entry ${level}`;
+        logElement.innerHTML = `
+            <span class="log-time">${new Date().toLocaleTimeString()}</span>
+            <span class="log-level">${level.toUpperCase()}</span>
+            <span class="log-message">${message}</span>
+        `;
+        logsDisplay.appendChild(logElement);
+        logsDisplay.scrollTop = logsDisplay.scrollHeight;
+    }
+
+    updateConnectionStatus(status) {
+        document.getElementById('connectionStatus').textContent = status;
+        document.getElementById('connectionStatus').className = 
+            status === 'Connected' ? 'connected' : 'disconnected';
+    }
+
+    async startStatusUpdates() {
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/system/status');
+                const status = await response.json();
+                this.updateSystemStatus(status);
+            } catch (error) {
+                console.warn('Status update failed:', error);
+            }
+        }, 5000);
+    }
+
+    updateSystemStatus(status) {
+        Object.entries(status).forEach(([service, state]) => {
+            const indicator = document.querySelector(`[data-service="${service}"]`);
+            if (indicator) {
+                indicator.className = `status-indicator ${state === 'active' ? 'active' : 'inactive'}`;
+            }
+        });
+    }
+
+    handleWebSocketMessage(message) {
+        switch (message.type) {
+            case 'chat':
+                this.addChatMessage('atlas', message.data);
+                break;
+            case 'agent_status':
+                this.updateAgentStatus(message.agent_id, message.status);
+                break;
+            case 'team_update':
+                this.currentTeam = message.team;
+                this.renderTeamVisualization();
+                break;
+            case 'system_log':
+                this.log(message.level, message.message);
+                break;
+        }
+    }
+}
+
+class ATLASAvatar {
+    constructor(canvas, container) {
+        this.canvas = canvas;
+        this.container = container;
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.avatarModel = null;
+    }
+
+    async initialize() {
+        if (!window.THREE) {
+            console.warn('Three.js not loaded, avatar disabled');
+            return;
+        }
+
+        this.setupScene();
+        this.setupLighting();
+        await this.loadAvatar();
+        this.startRenderLoop();
+        this.setupInteractions();
+    }
+
+    setupScene() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(
+            50, 
+            this.container.clientWidth / this.container.clientHeight, 
+            0.1, 
+            100
+        );
+        this.camera.position.set(0, 0, 2.2);
+
+        this.renderer = new THREE.WebGLRenderer({ 
+            canvas: this.canvas,
+            antialias: true, 
+            alpha: true 
+        });
+        this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    }
+
+    setupLighting() {
+        // Primary light (neon green)
+        const primaryLight = new THREE.PointLight(0x00ff66, 3, 10);
+        primaryLight.position.set(1, 1, 2);
+        this.scene.add(primaryLight);
+
+        // Ambient light
+        const ambientLight = new THREE.AmbientLight(0x004422, 0.8);
+        this.scene.add(ambientLight);
+
+        // Accent light
+        const accentLight = new THREE.PointLight(0x0099ff, 1, 5);
+        accentLight.position.set(-1, -1, 1);
+        this.scene.add(accentLight);
+    }
+
+    async loadAvatar() {
+        // For now, create a geometric avatar
+        const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x00ff66,
+            emissive: 0x002211,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        this.avatarModel = new THREE.Mesh(geometry, material);
+        this.scene.add(this.avatarModel);
+
+        // Add wireframe overlay
+        const wireframe = new THREE.WireframeGeometry(geometry);
+        const line = new THREE.LineSegments(wireframe);
+        line.material.depthTest = false;
+        line.material.opacity = 0.3;
+        line.material.transparent = true;
+        line.material.color = new THREE.Color(0x00ff66);
+        this.avatarModel.add(line);
+    }
+
+    startRenderLoop() {
+        const animate = () => {
+            requestAnimationFrame(animate);
+            
+            if (this.avatarModel) {
+                this.avatarModel.rotation.y += 0.005;
+                this.avatarModel.rotation.x = Math.sin(Date.now() * 0.001) * 0.1;
+            }
+            
+            this.renderer.render(this.scene, this.camera);
+        };
+        animate();
+    }
+
+    setupInteractions() {
+        window.addEventListener('resize', () => {
+            const width = this.container.clientWidth;
+            const height = this.container.clientHeight;
+            
+            this.camera.aspect = width / height;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(width, height);
+        });
+    }
+}
+
+// Initialize the interface when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    new ATLASInterface();
+});
+```
+
+### 3. Enhanced CSS Styling
+
+**Location:** `web/frontend/static/css/atlas-ui.css`
+
+```css
+/* ATLAS Web Interface Styles */
+:root {
+    --bg-primary: #000000;
+    --bg-secondary: #010b0d;
+    --bg-panel: #001122;
+    --accent-primary: #00ff66;
+    --accent-secondary: #0099ff;
+    --text-primary: #b7ffb7;
+    --text-secondary: #66cc66;
+    --error: #ff4444;
+    --warning: #ffaa00;
+    --border: #003344;
+    --font-mono: "Menlo", "Consolas", "Monaco", monospace;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-mono);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+}
+
+.atlas-interface {
+    display: grid;
+    grid-template-columns: 400px 1fr 400px;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 40px);
+    gap: 2px;
+    padding: 2px;
+}
+
+/* Panel Styles */
+.chat-panel,
+.logs-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.avatar-stage {
+    background: radial-gradient(ellipse at center, var(--bg-panel) 0%, var(--bg-primary) 70%);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.panel-header {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-header h2 {
+    color: var(--accent-primary);
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 1px;
+}
+
+/* Avatar Container */
+.avatar-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+}
+
+#avatarCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 50%;
+    box-shadow: 0 0 50px rgba(0, 255, 102, 0.3);
+}
+
+.avatar-status {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--accent-primary);
+}
+
+.pulse-indicator {
+    width: 8px;
+    height: 8px;
+    background: var(--accent-primary);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 5px var(--accent-primary); }
+    50% { opacity: 0.5; box-shadow: 0 0 20px var(--accent-primary); }
+}
+
+/* Chat Panel */
+.chat-history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    max-height: 300px;
+}
+
+.agent-list {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.agent-list h3 {
+    color: var(--accent-secondary);
+    font-size: 12px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.agents-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.agent-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    transition: border-color 0.3s ease;
+}
+
+.agent-card:hover {
+    border-color: var(--accent-primary);
+}
+
+.agent-name {
+    font-weight: bold;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.agent-status {
+    font-size: 10px;
+    margin: 4px 0;
+}
+
+.agent-status[data-status="active"] { color: var(--accent-primary); }
+.agent-status[data-status="inactive"] { color: var(--error); }
+.agent-status[data-status="unknown"] { color: var(--warning); }
+
+.capability-tag {
+    display: inline-block;
+    background: var(--border);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    margin-right: 4px;
+}
+
+.chat-input-area {
+    border-top: 1px solid var(--border);
+    padding: 16px;
+}
+
+#messageInput {
+    width: 100%;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+#messageInput:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 102, 0.2);
+}
+
+.control-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 102, 0.2);
+}
+
+.btn-atlas {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    font-weight: bold;
+}
+
+/* Team Visualization */
+.team-visualization {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    padding: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.team-visualization h3 {
+    color: var(--accent-secondary);
+    font-size: 12px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+
+.team-members {
+    display: grid;
+    gap: 8px;
+}
+
+.team-member {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.member-name {
+    font-weight: bold;
+    color: var(--text-primary);
+    font-size: 11px;
+}
+
+.member-role {
+    color: var(--accent-secondary);
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+/* Logs Panel */
+.logs-display {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.log-entry {
+    margin-bottom: 4px;
+    display: flex;
+    gap: 8px;
+}
+
+.log-time {
+    color: var(--text-secondary);
+    min-width: 60px;
+}
+
+.log-level {
+    min-width: 40px;
+    font-weight: bold;
+}
+
+.log-entry.error .log-level { color: var(--error); }
+.log-entry.warn .log-level { color: var(--warning); }
+.log-entry.info .log-level { color: var(--accent-primary); }
+
+.metrics-panel {
+    border-top: 1px solid var(--border);
+    padding: 16px;
+}
+
+.metrics-panel h3 {
+    color: var(--accent-secondary);
+    font-size: 12px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+
+.metrics-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.metric-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.metric-value {
+    font-weight: bold;
+    color: var(--accent-primary);
+}
+
+/* Status Bar */
+.status-bar {
+    height: 40px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 11px;
+}
+
+.status-indicators {
+    display: flex;
+    gap: 16px;
+}
+
+.status-indicator {
+    transition: color 0.3s ease;
+}
+
+.status-indicator.active {
+    color: var(--accent-primary);
+}
+
+.status-indicator.inactive {
+    color: var(--error);
+}
+
+.connection-status .connected {
+    color: var(--accent-primary);
+}
+
+.connection-status .disconnected {
+    color: var(--error);
+}
+
+/* Chat Messages */
+.chat-message {
+    margin-bottom: 12px;
+    padding: 8px;
+    border-radius: 4px;
+    border-left: 3px solid var(--border);
+}
+
+.chat-message.user {
+    border-left-color: var(--accent-secondary);
+    background: rgba(0, 153, 255, 0.1);
+}
+
+.chat-message.atlas {
+    border-left-color: var(--accent-primary);
+    background: rgba(0, 255, 102, 0.1);
+}
+
+.message-sender {
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.message-content {
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.message-time {
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.system-message {
+    background: var(--bg-panel);
+    border: 1px solid var(--accent-primary);
+    padding: 8px;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 11px;
+    margin-bottom: 16px;
+    color: var(--accent-primary);
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .atlas-interface {
+        grid-template-columns: 300px 1fr 300px;
+    }
+}
+
+@media (max-width: 900px) {
+    .atlas-interface {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+    }
+    
+    .chat-panel,
+    .logs-panel {
+        max-height: 200px;
+    }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+}
+```
+
+### 4. Project Structure
+
+```
+web/
+├── api/
+│   ├── __init__.py
+│   ├── server.py              # FastAPI backend server
+│   ├── agents_api.py          # Agent management endpoints
+│   ├── teams_api.py           # Team formation endpoints
+│   └── websocket_handler.py   # Real-time communication
+├── frontend/
+│   ├── index.html             # Main interface
+│   └── static/
+│       ├── css/
+│       │   └── atlas-ui.css   # Interface styling
+│       ├── js/
+│       │   ├── atlas-interface.js  # Main application
+│       │   ├── avatar-3d.js        # 3D avatar management
+│       │   └── websocket-client.js # WebSocket handling
+│       └── assets/
+│           ├── models/         # 3D models
+│           └── images/         # UI images
+└── tests/
+    ├── test_api.py            # API endpoint tests
+    ├── test_websocket.py      # WebSocket functionality tests
+    └── test_integration.py    # Full interface integration tests
+```
+
+### 5. Development & Deployment
+
+#### Local Development Setup
+```bash
+# 1. Install Node.js dependencies for the demo server
+cd tests/
+npm install express cors dotenv
+
+# 2. Install Python dependencies (already done)
+pip install -r agents/requirements.txt
+
+# 3. Start the web interface API server
+cd web/api/
+python server.py
+
+# 4. Access the interface
+# http://localhost:8000 (API server)
+# or use the existing demo server:
+# node tests/head-3d-server.js
+# http://localhost:8099
+```
+
+#### Integration with Existing Components
+The web interface seamlessly integrates with:
+- **Agent Registry**: Real-time agent status and management
+- **Team Constructor**: Dynamic team formation interface
+- **Health Monitor**: Live system status monitoring
+- **MCP Hub**: Tool integration and execution monitoring
+- **TTS/STT**: Voice interaction capabilities
+
+#### Testing Strategy
+```python
+# web/tests/test_integration.py
+import pytest
+from fastapi.testclient import TestClient
+from web.api.server import app
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+def test_agents_endpoint(client):
+    response = client.get("/api/agents")
+    assert response.status_code == 200
+    assert "agents" in response.json()
+
+def test_team_formation(client):
+    response = client.post("/api/teams/form", 
+        json={"description": "Create a web interface"})
+    assert response.status_code == 200
+    assert "team" in response.json()
+
+def test_system_status(client):
+    response = client.get("/api/system/status")
+    assert response.status_code == 200
+    status = response.json()
+    assert "agent_registry" in status
+```
+
+## Implementation Timeline
+
+### Phase 1: Backend API (Week 1)
+- [ ] Create FastAPI server with Agent Registry integration
+- [ ] Implement WebSocket for real-time communication
+- [ ] Add system status and monitoring endpoints
+- [ ] Create team formation API endpoints
+
+### Phase 2: Frontend Enhancement (Week 2) 
+- [ ] Expand existing 3D head into full interface layout
+- [ ] Implement real-time status updates
+- [ ] Add chat interface with WebSocket integration
+- [ ] Create team visualization components
+
+### Phase 3: Integration & Testing (Week 3)
+- [ ] Connect frontend to all backend APIs
+- [ ] Implement comprehensive testing suite
+- [ ] Add error handling and fallback mechanisms
+- [ ] Performance optimization and responsive design
+
+### Phase 4: Documentation & Deployment (Week 4)
+- [ ] Complete user documentation
+- [ ] Create deployment guides
+- [ ] Add monitoring and analytics
+- [ ] Production readiness checklist
+
+## Success Criteria
+
+✅ **Complete Web Interface**: Fully functional interface matching design mockup
+✅ **Backend Integration**: Connected to all Phase 4 components  
+✅ **Real-time Features**: Live status updates and communication
+✅ **Agent Management**: Full CRUD operations for agents
+✅ **Team Formation**: Dynamic team creation with visualization
+✅ **3D Avatar**: Enhanced avatar with hacker theme styling
+✅ **Responsive Design**: Works on desktop and tablet devices
+✅ **Testing Coverage**: Comprehensive test suite (>80% coverage)
+✅ **Documentation**: Complete setup and usage instructions
+✅ **Production Ready**: Deployable with proper security measures
+
+This comprehensive implementation guide provides everything needed to create a fully functional ATLAS web interface that builds upon the existing Phase 4 backend components while delivering an outstanding user experience with the requested hacker-themed design.
 
 Де тимчасовий код лежить зараз:
 
