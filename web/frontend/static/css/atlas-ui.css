@@ -526,6 +526,11 @@ body {
     z-index: 1000;
 }
 
+.modal.hidden {
+    display: none !important;
+    pointer-events: none;
+}
+
 .modal-content {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
