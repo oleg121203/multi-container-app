@@ -1,0 +1,115 @@
+---
+# Ollama Deployment for LLM2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+        app.kubernetes.io/name: ollama
+        app.kubernetes.io/part-of: atlas-system
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+          name: http
+        volumeMounts:
+        - name: models
+          mountPath: /root/.ollama
+        readinessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0"
+      # Init container to pull the required model
+      initContainers:
+      - name: model-puller
+        image: ollama/ollama:latest
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          ollama serve &
+          sleep 10
+          ollama pull gpt-oss:latest
+          pkill ollama
+        volumeMounts:
+        - name: models
+          mountPath: /root/.ollama
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: ollama-models-pvc
+
+---
+# Ollama PVC for model storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models-pvc
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# Ollama Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  ports:
+  - port: 11434
+    targetPort: 11434
+    protocol: TCP
+    name: http
+  selector:
+    app: ollama
