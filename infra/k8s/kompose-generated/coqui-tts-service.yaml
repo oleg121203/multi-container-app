@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
+    kompose.version: 1.31.2 (a92241f79)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: coqui-tts
+  name: coqui-tts
+spec:
+  ports:
+    - name: "5002"
+      port: 5002
+      targetPort: 5002
+  selector:
+    io.kompose.service: coqui-tts
+status:
+  loadBalancer: {}

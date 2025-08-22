@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
+    kompose.version: 1.31.2 (a92241f79)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: mcp-tts
+  name: mcp-tts
+spec:
+  ports:
+    - name: "4004"
+      port: 4004
+      targetPort: 4004
+  selector:
+    io.kompose.service: mcp-tts
+status:
+  loadBalancer: {}

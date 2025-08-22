@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
+    kompose.version: 1.31.2 (a92241f79)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: todo-app
+  name: todo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: todo-app
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
+        kompose.version: 1.31.2 (a92241f79)
+      creationTimestamp: null
+      labels:
+        io.kompose.network/multi-container-app-default: "true"
+        io.kompose.service: todo-app
+    spec:
+      containers:
+        - env:
+            - name: NODE_ENV
+              value: production
+          image: todo-app
+          name: todo-app
+          ports:
+            - containerPort: 3000
+              hostPort: 3000
+              protocol: TCP
+            - containerPort: 35729
+              hostPort: 35729
+              protocol: TCP
+          resources: {}
+      restartPolicy: Always
+status: {}

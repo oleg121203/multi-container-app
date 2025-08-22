@@ -1,0 +1,83 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: atlas-network-policy
+  namespace: atlas
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: atlas
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  - from: []
+    ports:
+    - protocol: TCP
+      port: 3000  # todo-app
+    - protocol: TCP
+      port: 4004  # mcp-tts
+    - protocol: TCP
+      port: 9090  # prometheus
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: atlas
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53   # DNS
+    - protocol: UDP
+      port: 53   # DNS
+    - protocol: TCP
+      port: 443  # HTTPS
+    - protocol: TCP
+      port: 80   # HTTP
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: atlas-limits
+  namespace: atlas
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    type: Container
+  - max:
+      cpu: "2"
+      memory: "4Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"
+    type: Container
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: atlas-quota
+  namespace: atlas
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"
+    services: "20"
+    secrets: "10"
+    configmaps: "10"
