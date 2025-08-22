@@ -1,0 +1,86 @@
+[
+  {
+    "test": "Health Endpoint",
+    "passed": true,
+    "message": "Status: 200",
+    "timestamp": 1755902299.4797223
+  },
+  {
+    "test": "Agents API - List",
+    "passed": true,
+    "message": "Found 0 agents",
+    "timestamp": 1755902299.4814742
+  },
+  {
+    "test": "System Status",
+    "passed": true,
+    "message": "Services: ['agent_registry', 'team_constructor', 'health_monitor', 'mcp_hub', 'llm1', 'llm2', 'llm3', 'tts', 'websocket', 'last_update']",
+    "timestamp": 1755902299.482955
+  },
+  {
+    "test": "Metrics API",
+    "passed": true,
+    "message": "Metrics: ['timestamp', 'uptime_seconds', 'active_agents', 'teams_formed', 'tasks_completed', 'request_count', 'error_count', 'error_rate_percent', 'active_websocket_connections', 'system_metrics', 'network_metrics']",
+    "timestamp": 1755902299.585618
+  },
+  {
+    "test": "Enhanced Team Formation",
+    "passed": false,
+    "message": "'NoneType' object has no attribute 'get'",
+    "timestamp": 1755902299.5883205
+  },
+  {
+    "test": "Analytics Endpoint",
+    "passed": false,
+    "message": "Status: 404",
+    "timestamp": 1755902299.5898967
+  },
+  {
+    "test": "Diagnostics API",
+    "passed": false,
+    "message": "Sections: ['detail']",
+    "timestamp": 1755902299.5913455
+  },
+  {
+    "test": "TTS API",
+    "passed": true,
+    "message": "Status: 200",
+    "timestamp": 1755902299.5949056
+  },
+  {
+    "test": "Voices API",
+    "passed": true,
+    "message": "Available voices: 4",
+    "timestamp": 1755902299.5963256
+  },
+  {
+    "test": "WebSocket Connection",
+    "passed": false,
+    "message": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'",
+    "timestamp": 1755902299.6074164
+  },
+  {
+    "test": "WebSocket Messaging",
+    "passed": false,
+    "message": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'",
+    "timestamp": 1755902299.6076088
+  },
+  {
+    "test": "Team Workflow",
+    "passed": true,
+    "message": "Complete workflow executed",
+    "timestamp": 1755902299.6128595
+  },
+  {
+    "test": "Error Handling",
+    "passed": true,
+    "message": "Invalid requests handled gracefully",
+    "timestamp": 1755902299.718897
+  },
+  {
+    "test": "API Performance",
+    "passed": true,
+    "message": "10 requests in 0.02s (avg: 0.00s)",
+    "timestamp": 1755902299.7341597
+  }
+]

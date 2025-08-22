@@ -654,6 +654,8 @@ atlas_disk_used_bytes {disk.used}
     except Exception as e:
         logger.error(f"Failed to generate Prometheus metrics: {e}")
         return f"# Error generating metrics: {str(e)}\n"
+
+@app.post("/api/analytics")
 async def receive_analytics(analytics_data: Dict[str, Any]):
     """Receive analytics data from frontend"""
     try:
@@ -721,6 +723,8 @@ async def get_system_diagnostics(user: str = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Diagnostics collection failed: {e}")
         return {"error": str(e)}
+
+@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time communication"""
     await manager.connect(websocket)
