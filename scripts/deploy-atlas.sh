@@ -72,6 +72,29 @@ print_header "Applying Security Policies"
 kubectl apply -f infra/k8s/manual/07-security-and-limits.yaml
 print_success "Security policies applied"
 
+# Deploy vector database and cache
+print_header "Deploying Vector Database and Cache"
+kubectl apply -f infra/k8s/manual/08-vector-database.yaml
+print_success "Vector database (Qdrant) and Redis cache deployed"
+
+# Deploy Ollama service
+print_header "Deploying Ollama Service"
+kubectl apply -f infra/k8s/manual/09-ollama.yaml
+print_success "Ollama service deployed"
+
+# Deploy ATLAS agents
+print_header "Deploying ATLAS Agents"
+echo "Note: Ensure secrets are configured in 11-atlas-secrets.yaml before deploying agents"
+if [ -f "infra/k8s/manual/11-atlas-secrets.yaml" ]; then
+    kubectl apply -f infra/k8s/manual/11-atlas-secrets.yaml
+    print_success "ATLAS secrets applied"
+else
+    print_warning "ATLAS secrets not found. Copy 11-atlas-secrets-template.yaml to 11-atlas-secrets.yaml and configure API keys"
+fi
+
+kubectl apply -f infra/k8s/manual/10-atlas-agents.yaml
+print_success "ATLAS agents deployed"
+
 # Wait for pods to be ready
 print_header "Waiting for Pods to Start"
 echo "Waiting for pods in atlas namespace to be ready..."

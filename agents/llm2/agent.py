@@ -4,6 +4,7 @@ Local task orchestration with strict Ollama preference, Linear tool integration,
 """
 import logging
 import asyncio
+import os
 from typing import List, Dict, Optional, Any
 import uuid
 from dataclasses import dataclass

@@ -1,0 +1,259 @@
+---
+# LLM1 Agent Deployment (User Interface with RAG)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm1
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: llm1
+    app.kubernetes.io/part-of: atlas-system
+    app.kubernetes.io/component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm1
+  template:
+    metadata:
+      labels:
+        app: llm1
+        app.kubernetes.io/name: llm1
+        app.kubernetes.io/part-of: atlas-system
+        app.kubernetes.io/component: agent
+    spec:
+      containers:
+      - name: llm1
+        image: atlas/llm1:latest
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: QDRANT_HOST
+          value: "qdrant"
+        - name: QDRANT_PORT
+          value: "6333"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: anthropic-api-key
+        - name: ATLAS_LLM1_PROVIDER
+          value: "openai"
+        - name: ATLAS_LLM1_MODEL
+          value: "gpt-4o-mini"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+
+---
+# LLM1 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm1
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: llm1
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  selector:
+    app: llm1
+
+---
+# LLM2 Agent Deployment (Orchestrator with Ollama)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm2
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: llm2
+    app.kubernetes.io/part-of: atlas-system
+    app.kubernetes.io/component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm2
+  template:
+    metadata:
+      labels:
+        app: llm2
+        app.kubernetes.io/name: llm2
+        app.kubernetes.io/part-of: atlas-system
+        app.kubernetes.io/component: agent
+    spec:
+      containers:
+      - name: llm2
+        image: atlas/llm2:latest
+        ports:
+        - containerPort: 8002
+          name: http
+        env:
+        - name: OLLAMA_HOST
+          value: "ollama"
+        - name: OLLAMA_PORT
+          value: "11434"
+        - name: OLLAMA_MODEL
+          value: "gpt-oss:latest"
+        - name: ATLAS_LLM2_ALLOW_FALLBACK
+          value: "false"
+        - name: LINEAR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: linear-api-key
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: openai-api-key
+              optional: true
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 45
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+
+---
+# LLM2 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm2
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: llm2
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  ports:
+  - port: 8002
+    targetPort: 8002
+    protocol: TCP
+    name: http
+  selector:
+    app: llm2
+
+---
+# LLM3 Agent Deployment (Security Watcher)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm3
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: llm3
+    app.kubernetes.io/part-of: atlas-system
+    app.kubernetes.io/component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm3
+  template:
+    metadata:
+      labels:
+        app: llm3
+        app.kubernetes.io/name: llm3
+        app.kubernetes.io/part-of: atlas-system
+        app.kubernetes.io/component: agent
+    spec:
+      containers:
+      - name: llm3
+        image: atlas/llm3:latest
+        ports:
+        - containerPort: 8003
+          name: http
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: openai-api-key
+        - name: ATLAS_LLM3_PROVIDER
+          value: "openai"
+        - name: ATLAS_LLM3_MODEL
+          value: "gpt-4o-mini"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+
+---
+# LLM3 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm3
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: llm3
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  ports:
+  - port: 8003
+    targetPort: 8003
+    protocol: TCP
+    name: http
+  selector:
+    app: llm3
