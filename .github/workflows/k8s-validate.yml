@@ -1,0 +1,41 @@
+name: k8s-validate
+
+on:
+  push:
+    paths:
+      - "infra/k8s/**/*.yaml"
+      - ".github/workflows/k8s-validate.yml"
+      - "scripts/fetch-k8s-schemas.sh"
+  pull_request:
+    paths:
+      - "infra/k8s/**/*.yaml"
+
+jobs:
+  kubeconform:
+    name: Kubeconform (offline schemas)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure schemas present
+        run: |
+          set -euo pipefail
+          chmod +x scripts/fetch-k8s-schemas.sh
+          if [ ! -d infra/k8s/schemas ] || [ -z "$(ls -A infra/k8s/schemas || true)" ]; then
+            echo "Schemas missing. Fetching v1.30.0..."
+            ./scripts/fetch-k8s-schemas.sh v1.30.0
+          else
+            echo "Schemas already present."
+          fi
+
+      - name: Run kubeconform in container
+        uses: addnab/docker-run-action@v3
+        with:
+          image: ghcr.io/yannh/kubeconform:latest
+          options: -v ${{ github.workspace }}:/repo -w /repo
+          run: >
+            kubeconform -strict -summary
+            -schema-location file://./infra/k8s/schemas
+            -schema-location default
+            infra/k8s
