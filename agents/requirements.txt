@@ -1,0 +1,48 @@
+# Core dependencies for ATLAS agents
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+python-dotenv==1.0.0
+
+# RAG and vector storage (MEM-01)
+qdrant-client==1.7.0
+sentence-transformers==2.2.2
+langchain==0.1.0
+langchain-community==0.0.10
+tiktoken==0.5.2
+
+# Redis for semantic cache
+redis==5.0.1
+hiredis==2.2.3
+
+# LLM providers (CFG-01)
+openai==1.6.1
+anthropic==0.8.1
+google-generativeai==0.3.2
+ollama==0.1.7
+
+# AutoGen for LLM2 orchestration (ORC-01)
+pyautogen==0.2.0
+autogen==0.2.0
+
+# Linear API integration
+gql==3.4.1
+requests==2.31.0
+httpx==0.25.2
+
+# Monitoring and logging
+prometheus-client==0.19.0
+structlog==23.2.0
+
+# Testing dependencies
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+httpx==0.25.2
+coverage==7.3.2
+pytest-cov==4.1.0
+
+# Development
+black==23.11.0
+ruff==0.1.7
+mypy==1.7.1

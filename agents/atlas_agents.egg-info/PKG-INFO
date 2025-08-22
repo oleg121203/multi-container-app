@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: atlas-agents
+Version: 0.1.0
+Summary: ATLAS Multi-Agent LLM System - Phase 2
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.11
+Provides-Extra: dev
+Provides-Extra: test
