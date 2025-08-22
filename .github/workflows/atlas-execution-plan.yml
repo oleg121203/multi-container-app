@@ -1,0 +1,233 @@
+name: ATLAS Execution Plan & Progress Tracker
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Phase to execute'
+        required: true
+        default: 'phase1'
+        type: choice
+        options:
+        - phase1
+        - phase2
+        - phase3
+        - phase4
+        - phase5
+        - all
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/atlas-execution-plan.yml'
+      - 'infra/**'
+      - 'agents/**'
+      - 'mcp/**'
+
+env:
+  ATLAS_PHASE: ${{ github.event.inputs.phase || 'phase1' }}
+
+jobs:
+  execution-plan:
+    runs-on: ubuntu-latest
+    name: ATLAS Execution Plan Tracker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        run: |
+          echo "ATLAS Implementation Execution Plan"
+          echo "===================================="
+          echo "Current Phase: ${{ env.ATLAS_PHASE }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          
+      - name: Phase 1 - Infrastructure (INF-01, INF-02, OBS-01, OPS-01)
+        if: ${{ env.ATLAS_PHASE == 'phase1' || env.ATLAS_PHASE == 'all' }}
+        run: |
+          echo "🏗️ PHASE 1: Infrastructure Setup"
+          echo "================================="
+          echo "✅ Objectives:"
+          echo "  - Convert compose.yaml to K8s manifests"
+          echo "  - Setup persistent storage (PVC for MongoDB, Redis, Vector DB)"
+          echo "  - Configure monitoring (Prometheus + Grafana)"
+          echo "  - Implement secrets management"
+          echo ""
+          echo "📋 Tasks:"
+          echo "  - [ ] INF-01: Kompose conversion + manual k8s fixes"
+          echo "  - [ ] INF-02: StatefulSets for databases + PVC"
+          echo "  - [ ] OBS-01: Prometheus + Grafana setup"
+          echo "  - [ ] OPS-01: Secrets, RBAC, NetworkPolicy"
+          echo ""
+          echo "🎯 Success Criteria:"
+          echo "  - All services run in Kubernetes"
+          echo "  - Data persists across pod restarts"
+          echo "  - Basic monitoring dashboards available"
+          echo "  - Security policies enforced"
+
+      - name: Phase 2 - Agents & Memory (RAG-01..RAG-04, LLM-01..LLM-03)
+        if: ${{ env.ATLAS_PHASE == 'phase2' || env.ATLAS_PHASE == 'all' }}
+        run: |
+          echo "🤖 PHASE 2: Agents and Memory (RAG)"
+          echo "=================================="
+          echo "✅ Objectives:"
+          echo "  - Implement RAG system with vector database"
+          echo "  - Deploy LLM agents (LLM1, LLM2, LLM3)"
+          echo "  - Setup semantic caching with Redis"
+          echo "  - Configure local Ollama for LLM2"
+          echo ""
+          echo "📋 Tasks:"
+          echo "  - [ ] RAG-01: Setup Qdrant/Milvus vector database"
+          echo "  - [ ] RAG-02: Implement chunking and embedding pipeline"
+          echo "  - [ ] RAG-03: Redis semantic cache integration"
+          echo "  - [ ] RAG-04: Retrieval and context augmentation"
+          echo "  - [ ] LLM-01: LLM1 (User Interface + Memory)"
+          echo "  - [ ] LLM-02: LLM2 (Orchestrator + Ollama)"
+          echo "  - [ ] LLM-03: LLM3 (Security Monitor)"
+          echo ""
+          echo "🎯 Success Criteria:"
+          echo "  - LLM1 provides contextual responses with memory"
+          echo "  - LLM2 can decompose tasks and call tools"
+          echo "  - LLM3 monitors system for anomalies"
+          echo "  - RAG system performs semantic search"
+
+      - name: Phase 3 - Automation & Security (MCP-01..MCP-06, SEC-01, GUI-01)
+        if: ${{ env.ATLAS_PHASE == 'phase3' || env.ATLAS_PHASE == 'all' }}
+        run: |
+          echo "🔒 PHASE 3: Automation & Security"
+          echo "================================"
+          echo "✅ Objectives:"
+          echo "  - Deploy MCP Hub with modular MCP servers"
+          echo "  - Implement Falco security monitoring"
+          echo "  - Setup automated incident response"
+          echo "  - Secure Playwright browser automation"
+          echo ""
+          echo "📋 Tasks:"
+          echo "  - [ ] MCP-01: MCP Hub architecture and client"
+          echo "  - [ ] MCP-02: Playwright MCP server (containerized)"
+          echo "  - [ ] MCP-03: Automation MCP server"
+          echo "  - [ ] MCP-04: TTS MCP integration"
+          echo "  - [ ] MCP-05: macOS Automator MCP server"
+          echo "  - [ ] MCP-06: MCP telemetry → Prometheus"
+          echo "  - [ ] SEC-01: Falco deployment + LLM3 integration"
+          echo "  - [ ] GUI-01: Secure Playwright in Apple container/Kasm"
+          echo ""
+          echo "🎯 Success Criteria:"
+          echo "  - MCP Hub federates all tool access"
+          echo "  - Falco events trigger LLM3 responses"
+          echo "  - Playwright runs securely in isolation"
+          echo "  - TTS system provides voice feedback"
+
+      - name: Phase 4 - Agent Registry & Teams (TEAM-01..TEAM-05, UI-01)
+        if: ${{ env.ATLAS_PHASE == 'phase4' || env.ATLAS_PHASE == 'all' }}
+        run: |
+          echo "👥 PHASE 4: Agent Registry & Dynamic Teams"
+          echo "========================================="
+          echo "✅ Objectives:"
+          echo "  - Implement agent registry with CRUD API"
+          echo "  - Build dynamic team constructor"
+          echo "  - Create minimal UI for team management"
+          echo "  - Setup role templates and personas"
+          echo ""
+          echo "📋 Tasks:"
+          echo "  - [ ] TEAM-01: Agent Registry (CRUD + storage)"
+          echo "  - [ ] TEAM-02: Role templates/personas (YAML)"
+          echo "  - [ ] TEAM-03: Dynamic team builder (AutoGen/MetaGPT)"
+          echo "  - [ ] TEAM-04: Orkes integration for long workflows"
+          echo "  - [ ] TEAM-05: Team metrics and observability"
+          echo "  - [ ] UI-01: Basic web interface for team management"
+          echo ""
+          echo "🎯 Success Criteria:"
+          echo "  - Agents can be registered and managed via API"
+          echo "  - Teams auto-form based on task requirements"
+          echo "  - Human approval gate for team formation"
+          echo "  - Basic UI for team oversight"
+
+      - name: Phase 5 - Production Readiness (PROD-01..PROD-04)
+        if: ${{ env.ATLAS_PHASE == 'phase5' || env.ATLAS_PHASE == 'all' }}
+        run: |
+          echo "🚀 PHASE 5: Production Readiness"
+          echo "==============================="
+          echo "✅ Objectives:"
+          echo "  - Comprehensive CI/CD pipeline"
+          echo "  - SLOs, alerts, and runbooks"
+          echo "  - Backup and disaster recovery"
+          echo "  - Performance optimization"
+          echo ""
+          echo "📋 Tasks:"
+          echo "  - [ ] PROD-01: Enhanced CI/CD with E2E tests"
+          echo "  - [ ] PROD-02: SLO definitions and alerting"
+          echo "  - [ ] PROD-03: Backup strategies for all data"
+          echo "  - [ ] PROD-04: Load testing and optimization"
+          echo ""
+          echo "🎯 Success Criteria:"
+          echo "  - Automated deployment pipeline"
+          echo "  - 99.9% uptime SLO with monitoring"
+          echo "  - Disaster recovery procedures tested"
+          echo "  - System handles expected load"
+
+      - name: Implementation Status Check
+        run: |
+          echo "📊 IMPLEMENTATION STATUS OVERVIEW"
+          echo "================================="
+          echo ""
+          echo "Current Repository Status:"
+          echo "- ✅ Basic todo-app foundation"
+          echo "- ✅ MCP TTS services configured"
+          echo "- ✅ Comprehensive documentation (instruction.md, ATLAS.md)"
+          echo "- ⚠️  K8s infrastructure minimal"
+          echo "- ❌ RAG system not implemented"
+          echo "- ❌ LLM agents not deployed"
+          echo "- ❌ Security monitoring missing"
+          echo "- ❌ Agent registry not implemented"
+          echo ""
+          echo "Next Actions Required:"
+          echo "1. Execute Phase 1: Infrastructure setup"
+          echo "2. Convert compose.yaml to K8s manifests"
+          echo "3. Setup monitoring and security"
+          echo "4. Begin agent implementation"
+          echo ""
+          echo "To continue implementation:"
+          echo "  gh workflow run atlas-execution-plan.yml -f phase=phase1"
+
+      - name: Generate Execution Report
+        run: |
+          echo "ATLAS Implementation Progress Report" > atlas-progress.md
+          echo "===================================" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "**Generated:** $(date)" >> atlas-progress.md
+          echo "**Phase:** ${{ env.ATLAS_PHASE }}" >> atlas-progress.md
+          echo "**Commit:** ${{ github.sha }}" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "## Current Status" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "### ✅ Completed" >> atlas-progress.md
+          echo "- Repository structure established" >> atlas-progress.md
+          echo "- Documentation comprehensive and detailed" >> atlas-progress.md
+          echo "- Basic CI workflow exists" >> atlas-progress.md
+          echo "- MCP TTS services configured in compose.yaml" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "### 🚧 In Progress" >> atlas-progress.md
+          echo "- Execution plan workflow creation" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "### ❌ Pending" >> atlas-progress.md
+          echo "- Phase 1: Infrastructure (K8s conversion)" >> atlas-progress.md
+          echo "- Phase 2: RAG and LLM agents" >> atlas-progress.md
+          echo "- Phase 3: MCP Hub and security" >> atlas-progress.md
+          echo "- Phase 4: Agent registry and teams" >> atlas-progress.md
+          echo "- Phase 5: Production readiness" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "## Next Steps" >> atlas-progress.md
+          echo "" >> atlas-progress.md
+          echo "1. **Immediate:** Execute Phase 1 infrastructure setup" >> atlas-progress.md
+          echo "2. **Short-term:** Convert Docker Compose to Kubernetes" >> atlas-progress.md
+          echo "3. **Medium-term:** Implement core agents and RAG system" >> atlas-progress.md
+          echo "4. **Long-term:** Complete full ATLAS implementation" >> atlas-progress.md
+
+      - name: Upload Progress Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-progress-report
+          path: atlas-progress.md
+          retention-days: 30
