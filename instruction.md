@@ -778,10 +778,13 @@ A: У Kubernetes Secrets/CI secrets, не в коді/репозиторії. Ш
 
 ### Технічні обмеження
 
-- **Локальна Ollama для LLM2:** Строго використовувати локальну Ollama з моделлю `gpt-oss:latest`. Фолбек на віддалені провайдери лише з явним дозволом `ATLAS_LLM2_ALLOW_FALLBACK=true`.
-- **Ізоляція браузера:** Playwright та інші GUI-автоматизації повинні виконуватися в ізольованих контейнерах (Apple container/Kasm) для безпеки.
+- **Локальна Ollama для LLM2:** Строго використовувати локальну Ollama з моделлю `gpt-oss:latest`.
+  Фолбек на віддалені провайдери лише з явним дозволом `ATLAS_LLM2_ALLOW_FALLBACK=true`.
+- **Ізоляція браузера:** Playwright та інші GUI-автоматизації повинні виконуватися в ізольованих контейнерах
+  (Apple container/Kasm) для безпеки.
 - **Kubernetes-first:** Всі сервіси мають розгортатися в Kubernetes. Docker Compose використовується лише для первинної розробки.
-- **Фронтенд останнім:** Веб-інтерфейс розробляється після стабілізації API. Ранні UI-прототипи мають бути повністю підключені до бекенду без моків.
+- **Фронтенд останнім:** Веб-інтерфейс розробляється після стабілізації API. Ранні UI-прототипи мають бути повністю
+  підключені до бекенду без моків.
 
 ### Стандарти кодування
 
@@ -828,11 +831,13 @@ A: У Kubernetes Secrets/CI secrets, не в коді/репозиторії. Ш
 <!-- Removed duplicate overview block to avoid lint issues and keep single canonical plan above -->
 
 ## 1. Контекст і архітектурна картина
+
 - Проєкт: ATLAS — багатоагентна система з трьома базовими LLM-агентами:
   - LLM1 — користувацький інтерфейс і довготривала пам'ять (RAG).
   - LLM2 — локальний оркестратор/оркестраційний агент (повинен використовувати Ollama: gpt-oss:latest за замовчуванням).
   - LLM3 — агент безпеки і нагляду, підключений до Falco.
-- Інструментальна шина: MCP Hub — набір контейнеризованих сервісів (Playwright, TTS, Automation, macOS Automator та ін.), які агенти можуть викликати.
+- Інструментальна шина: MCP Hub — набір контейнеризованих сервісів (Playwright, TTS, Automation,
+  macOS Automator та ін.), які агенти можуть викликати.
 - Платформа оркестрації: Kubernetes — декларативний підхід, маніфести в `k8s/`.
 
 ## 2. Фази реалізації — детально
@@ -847,35 +852,37 @@ A: У Kubernetes Secrets/CI secrets, не в коді/репозиторії. Ш
 
 1. Ручне доопрацювання згенерованих манифестів:
 
-  - StatefulSet для Qdrant/Milvus і Redis з `volumeClaimTemplates`.
-  - Deployment для stateless сервісів (агенти, API, MCP-клієнти).
-  - Readiness & Liveness probes для сервісів.
-  - Resource requests/limits для всіх pod'ів.
-  - Anti-affinity / podAntiAffinity для критичних сервісів.
+- StatefulSet для Qdrant/Milvus і Redis з `volumeClaimTemplates`.
+- Deployment для stateless сервісів (агенти, API, MCP-клієнти).
+- Readiness & Liveness probes для сервісів.
+- Resource requests/limits для всіх pod'ів.
+- Anti-affinity / podAntiAffinity для критичних сервісів.
 
 1. Storage:
 
-  - Додати StorageClass (локальний або cloud) і PVC-політики.
-  - Документувати правила бекапу томів.
+- Додати StorageClass (локальний або cloud) і PVC-політики.
+- Документувати правила бекапу томів.
 
 1. Моніторинг:
 
-  - Розгорнути Prometheus + Grafana в namespace `observability`.
-  - Налаштувати ServiceMonitors або Prometheus scrape targets для всіх сервісів.
-  - Експортувати початкові dashboard JSON для Grafana у `infra/monitoring/`.
+- Розгорнути Prometheus + Grafana в namespace `observability`.
+- Налаштувати ServiceMonitors або Prometheus scrape targets для всіх сервісів.
+- Експортувати початкові dashboard JSON для Grafana у `infra/monitoring/`.
 
 1. Сек'юриті та операції:
 
-  - Створити Kubernetes Secrets для всіх ключів (з `.env.example` як шаблоном).
-  - Налаштувати мінімальні RBAC ролі для сервісних акаунтів (`principle of least privilege`).
-  - Впровадити базові NetworkPolicy для розмежування трафіку.
+- Створити Kubernetes Secrets для всіх ключів (з `.env.example` як шаблоном).
+- Налаштувати мінімальні RBAC ролі для сервісних акаунтів (`principle of least privilege`).
+- Впровадити базові NetworkPolicy для розмежування трафіку.
 
 Тести і CI:
+
 - Лінт манифестів (`kubeval`/`kubeconform`).
 - Інтеграційний pipeline: optional `kind`-кластер у CI; розгортання манифестів → smoke tests (svc reachable) → teardown.
 - Скрипти перевірки персистентності (запис → delete pod → перевірка даних).
 
 Критерії приймання:
+
 - PVC працюють і зберігають дані після рестарту.
 - Prometheus збирає метрики; Grafana відображає мінімальні панелі.
 - Secrets прописані і не коммітяться в репо.
@@ -885,35 +892,43 @@ A: У Kubernetes Secrets/CI secrets, не в коді/репозиторії. Ш
 Ціль: Реалізувати RAG для LLM1 і локальний оркестратор LLM2 з AutoGen/MetaGPT та інтеграцією Linear.
 
 Компоненти та контракти:
+
 - RAG-шар:
   - Входи: текст/доки (user messages), параметри chunking.
   - Виходи: набір релевантних фрагментів (top-k), embed vectors stored in Qdrant/Milvus.
   - Error modes: DB недоступна, ембедінг провайдер паде — fallback на локальний кеш або повернення короткого контексту.
   - Success: релевантні фрагменти додаються до prompt LLM1.
+
 - SemCache (Redis):
   - Кеш семантично подібних запитів; TTL за політикою; контроль порогу схожості.
+
 - LLM Provider Abstraction:
   - Уніфікований інтерфейс для OpenAI, Mistral, Gemini, Ollama.
   - Фолбек-ланцюг configurable; для LLM2 фолбек дозволений тільки коли ATLAS_LLM2_ALLOW_FALLBACK=true.
 
 LLM2 (оркестратор):
+
 - Запуск локальної Ollama інстанції з моделлю `gpt-oss:latest`.
 - Healthcheck endpoint та журналування відмов (audit log при фолбеку).
 - Інструмент Linear tool: GraphQL client, retry/circuit-breaker, unit тестований.
 
 Тести:
+
 - Unit: chunking, embedding pipe, qdrant index/store/retrieve; provider chain unit tests.
 - Integration: LLM1 ↔ RAG retrieval; LLM2 ↔ Ollama; Linear tool creating issues in test project.
 - E2E: full flow user → LLM1 (RAG) → LLM2 (plan + Linear issue).
 
 CI:
+
 - Додавати тести в GitHub Actions; mock external APIs where needed for CI stability.
 
 ### Фаза 3 — MCP Hub, Automation і Безпека (MCP-01..MCP-06, SEC-01, GUI-01)
 
-Ціль: Створити MCP Hub, ізольований виконувальний шар для браузерної автоматизації, та LLM3 інтеграцію з Falco для активного реагування.
+Ціль: Створити MCP Hub, ізольований виконувальний шар для браузерної автоматизації,
+та LLM3 інтеграцію з Falco для активного реагування.
 
 Kroky:
+
 - MCP Hub:
   - Реєстр доступних MCP серверів через env `ATLAS_MCP_SERVERS` або Service Discovery.
   - Контракты: HTTP/gRPC endpoints, auth tokens, timeouts, rate limits.
@@ -922,16 +937,19 @@ Kroky:
   - Виконувати сценарії в ізольованих контейнерах; обмежити мережеві політики та ресурси; mount тільки потрібні артефакти.
 - TTS MCP:
   - Підтримка кількох провайдерів (OpenAI, Google, ElevenLabs) з локальним Coqui fallback.
-  - Voice mapping env vars: ATLAS_TTS_AGENT_VOICE_LLM1, _LLM2, _LLM3.
+  - Voice mapping env vars: `ATLAS_TTS_AGENT_VOICE_LLM1`, `ATLAS_TTS_AGENT_VOICE_LLM2`, `ATLAS_TTS_AGENT_VOICE_LLM3`.
 - macOS Automation MCPs:
   - Два типи: Automation MCP та macOS Automator MCP — реалізувати telemetry export і безпечні інтерфейси.
 
 LLM3 & Falco:
+
 - Розгортання Falco; piping подій до LLM3 (streaming, webhooks або message bus).
-- LLM3 аналізує події, оцінює ризик, пропонує або виконує (за політикою) автоматизовані дії через K8s API: cordon, drain, delete pod, revoke secret.
+- LLM3 аналізує події, оцінює ризик, пропонує або виконує (за політикою) автоматизовані дії через K8s API:
+  cordon, drain, delete pod, revoke secret.
 - Жорсткі правила: автоматичні дії мають audit trail і approval gates для чутливих операцій.
 
 Тести:
+
 - Unit: Falco event parsing, TTS fallback logic, MCP selection policy.
 - Integration: simulate Falco event → LLM3 reaction (mock K8s); LLM2 → Playwright MCP scenario.
 - E2E: user requests screenshot → LLM2 uses Playwright MCP → result saved + TTS reads result.
@@ -943,32 +961,38 @@ LLM3 & Falco:
 Компоненти:
 
 #### Agent Registry
+
 - **CRUD API**: зберігання конфігурацій агентів, ролей, секретів (посилання на K8s Secrets), health status.
 - **Шаблони ролей**: YAML-templates для різних типів агентів і персон.
 - **Інтеграція з провайдерами**: безпечне зберігання API ключів через Kubernetes Secrets.
 
 #### Dynamic Team Constructor
+
 - **Аналіз завдань**: AutoGen/MetaGPT аналізує intent завдання і пропонує склад команди.
 - **Автопризначення ролей**: система автоматично призначає ролі агентам на основі їх навичок.
 - **Human-in-the-loop gate**: обов'язкове підтвердження користувачем перед запуском команди.
 - **Guardrails**: ліміти вартості/запитів, rate limiting, аудит дій команди.
 
 #### TTS та STT інтеграція
+
 - **TTS MCP**: підтримка кількох провайдерів (OpenAI, Google, ElevenLabs) з локальним Coqui fallback.
-- **Voice mapping**: прив'язка унікальних голосів до агентів (ATLAS_TTS_AGENT_VOICE_LLM1/2/3).
+- **Voice mapping**: прив'язка унікальних голосів до агентів (`ATLAS_TTS_AGENT_VOICE_LLM1`, `..._LLM2`, `..._LLM3`).
 - **STT MCP**: розпізнавання мовлення для участі користувача в Live Debate Mode.
 
 #### Live Debate Mode
+
 - **Режим живої дискусії**: агенти можуть вести голосову дискусію між собою.
 - **Модерація**: механізми контролю та спрямування дискусії.
 - **Підсумовування**: автоматичне підсумовування результатів дискусії.
 
 #### Grafana dashboards
+
 - Метрики команд: cost, duration, success_rate.
 - TTS/STT usage metrics та fallback events.
 - MCP Hub performance та auto-selection metrics.
 
 Тести:
+
 - **Unit тести**: Registry CRUD, team assembly logic, TTS/STT fallback.
 - **Integration тести**: Constructor + AutoGen orchestration, TTS з різними провайдерами.
 - **E2E тести**: повний потік з TTS, MCP usage та Live Debate scenarios.
@@ -978,30 +1002,37 @@ LLM3 & Falco:
 Ціль: Підготувати систему до production: повні E2E тести, документація, runbooks і мінімальний веб-інтерфейс.
 
 Кроки:
+
 - Frontend: після стабілізації API зробити lightweight UI (React/TS) підключений до бекенду, E2E тестований Playwright.
 - CI: pipeline: build images, run unit+integration tests, deploy to staging, run E2E, promote.
 - Ops: backup/restore procedure for vector DB and Redis; runbooks для реакції на інциденти.
 
 Тести і приймання:
+
 - Nightly full E2E suite, security scans, performance tests.
 
 ## 3. Контракти та технічні рішення (коротко)
+
 - Формати даних, API contracts, env variables: тримати у /docs/openapi і `.env.example`.
 - Storage: Qdrant/Milvus schema for embeddings, metadata fields (timestamp, source, conversation_id, chunk_id).
 - Metrics: Prometheus metrics naming conventions and Grafana dashboard JSONs.
 
 ### Orkes integration (long-running workflows)
+
 - When long-running workflows are needed (multi-step, durable), use Orkes/Conductor style orchestration.
-- Contract: workflow definition (JSON/YAML) stored in `infra/workflows/`; tasks call services via HTTP/gRPC; state and task history persisted by Orkes.
-- Tests: unit test workflow definitions (lint), integration test by running a sample workflow against a local Orkes instance in CI.
+- Contract: workflow definition (JSON/YAML) stored in `infra/workflows/`;
+  tasks call services via HTTP/gRPC; state and task history persisted by Orkes.
+- Tests: unit test workflow definitions (lint),
+  integration test by running a sample workflow against a local Orkes instance in CI.
 
 ### Kompose quick example and manual refinements
+
 - Convert compose to k8s YAML (local dev step):
 
 ```bash
 # from repo root
 kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
-``` 
+```
 
 - Manual refinement checklist after conversion:
   - Replace generated Deployments for databases with `StatefulSet` and add `volumeClaimTemplates`.
@@ -1010,6 +1041,7 @@ kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
   - Add `podAntiAffinity` to critical services.
 
 ### Falco event example and LLM3 pseudocode
+
 - Example Falco event (JSON) delivered to LLM3 webhook/message queue:
 
 ```json
@@ -1040,6 +1072,7 @@ kompose convert -f compose.yaml -o infra/k8s/kompose-generated/
 ```
 
 ### ADR (Architecture Decision Record) template
+
 - Path: `docs/adr/` — keep one file per decision, e.g. `0001-llm2-ollama.md`.
 - Minimal ADR template:
 
@@ -1064,21 +1097,26 @@ Date: 2025-08-22
 ```
 
 ### Grafana dashboards export path
-- Store exported dashboards in `infra/monitoring/grafana/initial-dashboard.json` and reference them in deployment manifests (ConfigMap or provisioning).
+
+- Store exported dashboards in `infra/monitoring/grafana/initial-dashboard.json` and reference them in deployment
+  manifests (ConfigMap or provisioning).
 
 
 ## 4. Тестування та CI/CD — рекомендації
+
 - Unit coverage ≥ 80% для критичних компонентів.
 - Integration tests run in CI on merge; E2E run nightly or on demand against staging.
 - Use `kind` in CI for K8s integration tests; mock external APIs where necessary.
 
 ## 5. Стандарти кодування та патерни
+
 - Python: black, ruff, pytest, typing.
 - Node/TS: ESLint, Prettier, Jest/Playwright for E2E.
 - Patterns: DI, Strategy, Circuit Breaker, Observer.
 
 ## 6. Структура репозиторія (рекомендована)
-```
+
+```text
 atlas/
 ├── agents/
 │   ├── llm1/
@@ -1097,30 +1135,32 @@ atlas/
 ```
 
 ## 7. Приклади команд та швидкий старт (локально)
+
 - Рекомендовані кроки для початку локальної роботи (референс):
 
-1) Лінт манифестів та перевірка формату:
+1. Лінт манифестів та перевірка формату:
 
 ```bash
 # Перевірити всі k8s yaml
 kubeval infra/k8s/**/*.yaml
-``` 
+```
 
-2) Локальний кластер (kind) для інтеграційних тестів:
+1. Локальний кластер (kind) для інтеграційних тестів:
 
 ```bash
 kind create cluster --name atlas-test
 kubectl apply -f infra/k8s/
 # запустити smoke tests
-``` 
+```
 
-3) Запуск unit тестів (Python):
+1. Запуск unit тестів (Python):
 
 ```bash
 python -m pytest -q
-``` 
+```
 
 ## 8. Питання для уточнення (якщо потрібно)
+
 - Який Linear project треба використовувати у тестах?
 - Чи є доступ до Apple Container, або використовуємо Kasm/другий варіант?
 - Які провайдери TTS мають пріоритет?
@@ -1150,7 +1190,8 @@ python -m pytest -q
 
 - **Registry функціональність**: При заданих `ATLAS_MCP_SERVERS` LLM2 успішно підключається до всіх доступних MCP серверів.
 - **Playwright MCP**: Виконує браузерні сценарії (відкриття URL, скріншот) в ізольованому контейнері.
-- **TTS MCP**: Агенти можуть "говорити" з вибраними голосами; при відмові primary провайдера спрацьовує fallback (включно з coqui_tts).
+- **TTS MCP**: Агенти можуть "говорити" з вибраними голосами;
+  при відмові primary провайдера спрацьовує fallback (включно з coqui_tts).
 - **Auto-selection**: MCP Hub автоматично вибирає найефективніший сервер на основі метрик (latency, success rate).
 
 ### Dynamic Teams
@@ -1290,4 +1331,5 @@ fallback: anthropic   # claude-3
 
 ---
 
-Файл оновлено: ця версія `instruction.md` — зведений, деталізований план реалізації ATLAS, готовий до подальшого перетворення в робочі артефакти (k8s manifests, код агентів, CI workflows).
+Файл оновлено: ця версія `instruction.md` — зведений, деталізований план реалізації ATLAS,
+готовий до подальшого перетворення в робочі артефакти (k8s manifests, код агентів, CI workflows).
