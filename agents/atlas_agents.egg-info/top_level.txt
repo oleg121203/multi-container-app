@@ -1,4 +1,6 @@
 llm1
 llm2
 llm3
+mcp_hub
+mcp_servers
 shared

@@ -9,6 +9,13 @@ llm1/agent.py
 llm2/__init__.py
 llm2/agent.py
 llm3/__init__.py
+llm3/agent.py
+mcp_hub/__init__.py
+mcp_hub/client.py
+mcp_hub/registry.py
+mcp_servers/__init__.py
+mcp_servers/playwright/__init__.py
+mcp_servers/playwright/server.py
 shared/__init__.py
 shared/config.py
 shared/linear_tool.py
