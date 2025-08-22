@@ -35,7 +35,7 @@ jobs:
           image: ghcr.io/yannh/kubeconform:latest
           options: -v ${{ github.workspace }}:/repo -w /repo
           run: >
-            kubeconform -strict -summary
+            /kubeconform -strict -summary
             -schema-location file://./infra/k8s/schemas
             -schema-location default
             infra/k8s
