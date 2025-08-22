@@ -49,11 +49,12 @@
   - Automation MCP (загальні задачі автоматизації/інтеграцій),
   - macOS Automator MCP Server (оркестрація нативних дій macOS через Automator/Shortcuts),
   - TTS MCP (голос: blacktop/mcp-tts із кількома провайдерами),
-  - Filesystem/Git/HTTP MCP, Browser MCP тощо.
+  - Filesystem/Git/HTTP MCP, Browser MCP тощо,
+  - STT MCP (розпізнавання мовлення для участі користувача/агентів).
 - Дисквері/підключення: LLM2 містить MCP-клієнт, який читає реєстр серверів із env і встановлює з’єднання (HTTP/WebSocket) до кожного з них.
 - Кросплатформеність: усі MCP-сервери контейнеризовані (Linux/macOS/Windows). Для headful-браузера — Kasm або Apple container на macOS.
 - Конфігурація (env, узгоджений патерн):
-  - ATLAS_MCP_SERVERS=playwright,automation,automator,tts,git
+  - ATLAS_MCP_SERVERS=playwright,automation,automator,tts,stt,git
   - Для кожного: ATLAS_MCP_{NAME}_ENABLED=true|false, ATLAS_MCP_{NAME}_URL або HOST/PORT,
     ATLAS_MCP_{NAME}_AUTH_* (ключі), ATLAS_MCP_{NAME}_OPTS (додаткові прапори)
 - Ескіз docker-compose (довідково):
@@ -73,15 +74,19 @@
       image: ghcr.io/example/macos-automator-mcp:latest
       # За потреби: привілеї для доступу до Automator/Shortcuts на macOS-host з ізоляцією
       ports: ["4003:4003"]
+    mcp-stt:
+      image: ghcr.io/example/stt-mcp:latest
+      ports: ["8080:8080"]
   
     llm2-orchestrator:
       # ...існуюча конфігурація LLM2...
       environment:
-        - ATLAS_MCP_SERVERS=playwright,automation,automator
+        - ATLAS_MCP_SERVERS=playwright,automation,automator,tts,stt
         - ATLAS_MCP_PLAYWRIGHT_URL=http://mcp-playwright:4001
         - ATLAS_MCP_AUTOMATION_URL=http://mcp-automation:4002
         - ATLAS_MCP_AUTOMATOR_URL=http://mcp-automator:4003
-  - ATLAS_MCP_TTS_URL=http://mcp-tts:4004
+        - ATLAS_MCP_TTS_URL=http://mcp-tts:4004
+        - ATLAS_MCP_STT_URL=http://mcp-stt:8080
   ```
 
 - Безпека: ключі доступу в Kubernetes Secrets; мережеві політики обмежують доступ лише з сервісу LLM2. Логи доступів — у спільний стек спостережуваності.
@@ -134,6 +139,30 @@
 - GET /voices → { voices: string[] }
 - GET /health → { status: "ok" }
 - Метрики: Prometheus counters/gauges з лейблами provider, agent, voice, success; гістрограма latency_ms.
+
+##### Live Debate Mode (жива командна дискусія з TTS/STT)
+
+- Призначення: режим живої дискусії між агентами з можливістю долучення користувача голосом. У кінці — обов'язковий конструктивний підсумок і план дій (ідеологія: «в спорі народжується істина»).
+- Модерація: автоматичний модератор (LLM2) або людина; контролює регламент, черговість, таймбокс і етику.
+- Канали: TTS озвучує репліки агентів; STT перетворює мовлення користувача/агентів у текст; основний чат — текстовий лог для аудиту.
+
+Налаштування (env):
+
+- ATLAS_DEBATE_MODE_ENABLED=true|false
+- ATLAS_DEBATE_INTENSITY=0..1 (енергійність аргументації)
+- ATLAS_DEBATE_AGGRESSION=0..1 (ступінь наполегливості/контраргументації; без токсичності)
+- ATLAS_DEBATE_INTERRUPT_POLICY=strict|moderate|free
+- ATLAS_DEBATE_TURN_SECONDS=30
+- ATLAS_DEBATE_MAX_ROUNDS=5
+- ATLAS_DEBATE_MODERATOR=auto|user|agent:{NAME}
+- ATLAS_DEBATE_SUMMARY_STYLE=structured|narrative|bullets
+- ATLAS_DEBATE_DEVILS_ADVOCATE_RATE=0..1
+- ATLAS_DEBATE_STEELMAN=true|false
+- ATLAS_DEBATE_CONSENSUS_REQUIRED=hard|soft
+
+STT/TTS параметри (приклад): ATLAS_STT_PROVIDER=whisper|google|deepgram|vosk, ATLAS_STT_LANGUAGE=uk-UA; ATLAS_TTS_LANG=uk; GOOGLE_TTS_LANGUAGE=uk-UA.
+
+Безпека/етика: заборонені образи/мова ненависті; модератор припиняє некоректні дії; усі рішення — в логах.
 
 
 ##### Платформа «Реєстр агентів і Конструктор команд» (AutoGen/MetaGPT)
@@ -202,6 +231,7 @@ API (узагальнено):
   - Redis MCP або адаптер до Redis (якщо потрібні черги/кеш),
   - Buffer/Memory MCP (простий in‑memory буфер як тимчасове сховище проміжних артефактів),
   - Filesystem/Git/HTTP MCP (робота з файлами, VCS, HTTP).
+    - STT MCP (розпізнавання мовлення для участі користувача/агентів),
 - Примітка: якщо готового MCP‑сервера для Redis/Buffer немає, агент додає тонкий адаптер (обгортку) або еквівалентний інструмент.
 
 ## Функціональні вимоги (контракти)
@@ -286,6 +316,12 @@ API (узагальнено):
 - Спостережуваність: ключові метрики для агентів/оркестрації/черг; базові дашборди Grafana.
 - Безпека: Secrets для ключів, RBAC принцип найменших привілеїв, аудит дій LLM3.
 
+## Політика фронтенду
+
+- Основний веб‑інтерфейс буде розроблятися після завершення бекенду та стабілізації API/контрактів.
+- Допускається створення попередніх веб‑інтерфейсів для демонстрації або тестування, але лише «реальних» — без симуляцій/макетів/демо‑режимів. Всі інтеракції мають бути повністю підключені до бекенду та інструментів (MCP/Orkes) і працювати на тих же контрактах.
+- Пріоритет — CLI/HTTP API та інтеграційні тести; фронтенд з’являється як тонкий шар поверх усталених контрактів.
+
 ## Деплой і середовище
 
 ### З docker-compose до Kubernetes
@@ -349,6 +385,8 @@ API (узагальнено):
 - TEAM-03: Побудова динамічної команди (AutoGen/MetaGPT) за task intent + gate на підтвердження.
 - TEAM-04: Інтеграція з Orkes для довгих задач (workflow) + MCP Hub для інструментів.
 - TEAM-05: Дашборд ефективності команд: тривалість, успішність, вартість по ролях/провайдерах.
+- UI-01: Після стабілізації бекенд‑контрактів додати мінімальний «реальний» веб‑інтерфейс (без моків/демо) поверх існуючих API.
+- UI-02: Додати інтеграційні e2e тести фронтенду проти живого бекенду (Playwright) і включити в CI.
 
 ## Критерії приймання (Acceptance)
 
@@ -364,6 +402,7 @@ API (узагальнено):
 - TTS MCP: LLM‑агенти можуть «говорити» з вибраними голосами; при відмові primary‑провайдера TTS спрацьовує фолбек (зокрема coqui_tts через локальний сервер) і подія логуються.
 - Команди: користувач вказує лише імена + провайдер/модель/ключі; система формує команду, пропонує ролі, отримує підтвердження і запускає виконання.
 - Динаміка: для нової задачі будується команда за intent; для простої — доступна базова статична команда.
+- Фронтенд‑політика: основний веб‑інтерфейс з’являється після бекенду; якщо зібраний ранній UI — усі його дії виконуються реально через бекенд/API без симуляцій і проходять e2e тести.
 
 ## Ризики і пом'якшення
 
