@@ -68,6 +68,11 @@ class TeamFormationRequest(BaseModel):
     description: str
     constraints: Dict[str, Any] = {}
 
+class VoiceRequest(BaseModel):
+    text: str
+    voice: str = "default"
+    agent_id: str = "atlas"
+
 # WebSocket Connection Manager
 class ConnectionManager:
     def __init__(self):
@@ -119,6 +124,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure logging early
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Initialize backend components
 try:
     registry_path = ATLAS_AGENT_REGISTRY_PATH if 'ATLAS_AGENT_REGISTRY_PATH' in globals() else "./config/agents.json"
@@ -135,10 +144,6 @@ except Exception as e:
 
 # WebSocket manager
 manager = ConnectionManager()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup_event():
@@ -341,7 +346,131 @@ async def chat_endpoint(message: ChatMessage):
         logger.error(f"Chat failed: {e}")
         return {"response": "Error processing message", "status": "error"}
 
-@app.websocket("/ws")
+@app.post("/api/tts")
+async def text_to_speech(request: VoiceRequest):
+    """Convert text to speech using TTS service"""
+    try:
+        # In production, this would integrate with actual TTS MCP service
+        # For now, return audio URL placeholder
+        audio_url = f"/api/audio/{request.agent_id}_{hash(request.text) % 10000}.mp3"
+        
+        # Broadcast TTS event to connected clients
+        await manager.broadcast({
+            "type": "tts",
+            "text": request.text,
+            "audio_url": audio_url,
+            "agent_id": request.agent_id
+        })
+        
+        return {
+            "status": "success",
+            "audio_url": audio_url,
+            "duration_seconds": len(request.text) * 0.1  # Rough estimate
+        }
+    except Exception as e:
+        logger.error(f"TTS failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/stt")
+async def speech_to_text(audio_data: bytes):
+    """Convert speech to text using STT service"""
+    try:
+        # In production, this would integrate with actual STT MCP service
+        # For now, return placeholder text
+        transcript = "Voice input received"
+        
+        return {
+            "status": "success", 
+            "transcript": transcript,
+            "confidence": 0.95
+        }
+    except Exception as e:
+        logger.error(f"STT failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/voices")
+async def get_available_voices():
+    """Get available TTS voices"""
+    try:
+        voices = [
+            {"id": "atlas", "name": "ATLAS", "language": "en-US", "gender": "neutral"},
+            {"id": "llm1", "name": "LLM1 Assistant", "language": "en-US", "gender": "female"},
+            {"id": "llm2", "name": "LLM2 Orchestrator", "language": "en-US", "gender": "male"},
+            {"id": "llm3", "name": "LLM3 Security", "language": "en-US", "gender": "neutral"}
+        ]
+        return {"voices": voices}
+    except Exception as e:
+        logger.error(f"Failed to get voices: {e}")
+        return {"voices": []}
+
+@app.post("/api/analytics")
+async def receive_analytics(analytics_data: Dict[str, Any]):
+    """Receive analytics data from frontend"""
+    try:
+        # In production, this would store analytics in a database
+        logger.info(f"Analytics received: {analytics_data}")
+        return {"status": "success", "message": "Analytics received"}
+    except Exception as e:
+        logger.error(f"Analytics processing failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/teams/history")
+async def get_team_history():
+    """Get historical team formation data"""
+    try:
+        # Mock team history data
+        history = [
+            {
+                "id": "team_001",
+                "task": "Create user authentication system",
+                "members": ["LLM1 Agent", "LLM2 Orchestrator", "LLM3 Security Monitor"],
+                "formed_at": "2024-08-22T18:30:00Z",
+                "status": "completed",
+                "duration": 1800
+            },
+            {
+                "id": "team_002", 
+                "task": "Implement monitoring dashboard",
+                "members": ["LLM1 Agent", "LLM2 Orchestrator"],
+                "formed_at": "2024-08-22T19:15:00Z",
+                "status": "active",
+                "duration": 0
+            }
+        ]
+        return {"teams": history}
+    except Exception as e:
+        logger.error(f"Failed to get team history: {e}")
+        return {"teams": []}
+
+@app.get("/api/diagnostics")
+async def get_system_diagnostics():
+    """Get comprehensive system diagnostics"""
+    try:
+        # In production, this would gather real system metrics
+        diagnostics = {
+            "timestamp": "2024-08-22T20:30:00Z",
+            "system": {
+                "uptime": 86400,
+                "memory_usage": 65.2,
+                "cpu_usage": 23.8,
+                "disk_usage": 45.1
+            },
+            "services": {
+                "agent_registry": {"status": "active", "response_time_ms": 45},
+                "team_constructor": {"status": "active", "response_time_ms": 78},
+                "mcp_hub": {"status": "active", "response_time_ms": 32},
+                "websocket": {"status": "active", "connections": len(manager.active_connections)}
+            },
+            "performance": {
+                "avg_api_response_time": 156,
+                "requests_per_minute": 24,
+                "error_rate_percent": 0.8
+            }
+        }
+        return diagnostics
+    except Exception as e:
+        logger.error(f"Diagnostics collection failed: {e}")
+        return {"error": str(e)}
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time communication"""
     await manager.connect(websocket)
