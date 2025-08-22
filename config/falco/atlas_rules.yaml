@@ -1,0 +1,131 @@
+# ATLAS-specific Falco security rules
+# These rules are designed to detect security events relevant to the ATLAS system
+
+- rule: Unauthorized Process in Container
+  desc: Detect unauthorized processes running in containers
+  condition: >
+    spawned_process and container and
+    not proc.name in (node, python, python3, bash, sh, curl, wget, npm, pip, java)
+  output: >
+    Unauthorized process in container (user=%user.name command=%proc.cmdline 
+    container_id=%container.id container_name=%container.name image=%container.image.repository)
+  priority: WARNING
+  tags: [container, process]
+
+- rule: Sensitive File Access in Container
+  desc: Detect access to sensitive files in containers
+  condition: >
+    open_read and container and
+    (fd.name startswith /etc/passwd or
+     fd.name startswith /etc/shadow or
+     fd.name startswith /etc/hosts or
+     fd.name startswith /etc/hostname or
+     fd.name startswith /etc/ssh/ or
+     fd.name startswith /root/.ssh/ or
+     fd.name startswith /home/*/.ssh/)
+  output: >
+    Sensitive file accessed in container (user=%user.name file=%fd.name 
+    container_id=%container.id container_name=%container.name image=%container.image.repository)
+  priority: WARNING
+  tags: [container, filesystem]
+
+- rule: Container Drift Detected
+  desc: Detect when a container modifies itself (potential container escape)
+  condition: >
+    modify and container and
+    (fd.name startswith /proc/self/ or
+     fd.name startswith /proc/*/mem or
+     fd.name startswith /sys/fs/cgroup)
+  output: >
+    Container drift detected (user=%user.name file=%fd.name proc=%proc.name
+    container_id=%container.id container_name=%container.name image=%container.image.repository)
+  priority: CRITICAL
+  tags: [container, escape]
+
+- rule: Suspicious Network Activity in Container
+  desc: Detect suspicious network activity from containers
+  condition: >
+    outbound and container and
+    (fd.sip.name != "" and not fd.sip.name in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)) and
+    not proc.name in (curl, wget, python, python3, node, npm)
+  output: >
+    Suspicious network activity from container (user=%user.name dest=%fd.sip.name:%fd.sport 
+    proc=%proc.name container_id=%container.id container_name=%container.name)
+  priority: WARNING
+  tags: [container, network]
+
+- rule: Privileged Container Detected
+  desc: Detect containers running with excessive privileges
+  condition: >
+    container and proc.vpid=1 and
+    (proc.cap_permitted & CAP_SYS_ADMIN) != 0
+  output: >
+    Privileged container detected (user=%user.name proc=%proc.name 
+    container_id=%container.id container_name=%container.name image=%container.image.repository)
+  priority: HIGH
+  tags: [container, privilege]
+
+- rule: Atlas Agent Anomaly
+  desc: Detect anomalous behavior in ATLAS agents
+  condition: >
+    spawned_process and container and
+    container.image.repository startswith "atlas/" and
+    not proc.name in (python, python3, uvicorn, gunicorn, node, npm) and
+    not proc.cmdline contains "atlas"
+  output: >
+    ATLAS agent anomaly detected (user=%user.name command=%proc.cmdline 
+    container_id=%container.id container_name=%container.name image=%container.image.repository)
+  priority: HIGH
+  tags: [atlas, anomaly]
+
+- rule: LLM API Key Access
+  desc: Detect potential access to LLM API keys
+  condition: >
+    open_read and
+    (fd.name contains "api_key" or
+     fd.name contains "openai" or
+     fd.name contains "anthropic" or
+     fd.name contains ".env" or
+     fd.name contains "secret")
+  output: >
+    Potential API key access detected (user=%user.name file=%fd.name proc=%proc.name
+    container_id=%container.id container_name=%container.name)
+  priority: HIGH
+  tags: [secrets, api_keys]
+
+- rule: Falco Rules Modified
+  desc: Detect modifications to Falco rules or configuration
+  condition: >
+    modify and
+    (fd.name startswith /etc/falco/ or
+     fd.name contains "falco" and fd.name contains ".yaml")
+  output: >
+    Falco configuration modified (user=%user.name file=%fd.name proc=%proc.name)
+  priority: CRITICAL
+  tags: [falco, tampering]
+
+- rule: Kubernetes Secret Access
+  desc: Detect unauthorized access to Kubernetes secrets
+  condition: >
+    open_read and
+    fd.name startswith /var/run/secrets/kubernetes.io/
+  output: >
+    Kubernetes secret accessed (user=%user.name file=%fd.name proc=%proc.name
+    container_id=%container.id container_name=%container.name)
+  priority: WARNING
+  tags: [kubernetes, secrets]
+
+- rule: Suspicious Python Execution
+  desc: Detect suspicious Python code execution patterns
+  condition: >
+    spawned_process and proc.name in (python, python3) and
+    (proc.cmdline contains "exec(" or
+     proc.cmdline contains "eval(" or
+     proc.cmdline contains "import os" or
+     proc.cmdline contains "__import__" or
+     proc.cmdline contains "subprocess")
+  output: >
+    Suspicious Python execution detected (user=%user.name command=%proc.cmdline
+    container_id=%container.id container_name=%container.name)
+  priority: WARNING
+  tags: [python, injection]
