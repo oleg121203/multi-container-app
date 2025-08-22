@@ -1,0 +1,208 @@
+{
+  "version": "1.0.0",
+  "description": "ATLAS Agent Registry Configuration - Phase 4",
+  "agents": [
+    {
+      "agent_id": "llm1-agent",
+      "name": "LLM1 Agent",
+      "description": "UI and RAG-focused agent for user interactions and knowledge retrieval",
+      "url": "http://llm1-agent:8001",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "user_interface",
+          "description": "Handle user interface interactions and responses",
+          "parameters": {
+            "supported_formats": "text,json",
+            "max_response_length": "4000"
+          },
+          "required_tools": ["fastapi", "pydantic"]
+        },
+        {
+          "name": "rag_search",
+          "description": "Retrieve and use knowledge from vector database",
+          "parameters": {
+            "vector_db": "qdrant",
+            "max_results": "10",
+            "similarity_threshold": "0.85"
+          },
+          "required_tools": ["qdrant-client", "sentence-transformers"]
+        },
+        {
+          "name": "semantic_memory",
+          "description": "Store and retrieve semantic information",
+          "parameters": {
+            "cache_backend": "redis",
+            "ttl_seconds": "3600"
+          },
+          "required_tools": ["redis", "qdrant-client"]
+        }
+      ],
+      "metadata": {
+        "team": "ui-frontend",
+        "deployment": "kubernetes",
+        "resource_requirements": "low"
+      }
+    },
+    {
+      "agent_id": "llm2-agent",
+      "name": "LLM2 Orchestrator",
+      "description": "Central orchestrator for task planning and agent coordination",
+      "url": "http://llm2-agent:8002",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "task_orchestration",
+          "description": "Coordinate multiple agents and manage task execution",
+          "parameters": {
+            "max_concurrent_tasks": "5",
+            "coordination_mode": "event_driven"
+          },
+          "required_tools": ["mcp-client", "linear-api"]
+        },
+        {
+          "name": "mcp_integration",
+          "description": "Integrate with MCP servers for tool access",
+          "parameters": {
+            "supported_protocols": "http,websocket",
+            "max_connections": "10"
+          },
+          "required_tools": ["mcp-client", "aiohttp"]
+        },
+        {
+          "name": "linear_integration",
+          "description": "Create and manage Linear issues and projects",
+          "parameters": {
+            "api_version": "2023-01-01",
+            "max_batch_size": "20"
+          },
+          "required_tools": ["gql", "linear-api"]
+        },
+        {
+          "name": "task_planning",
+          "description": "Analyze tasks and create execution plans",
+          "parameters": {
+            "planning_horizon": "short_term",
+            "max_plan_steps": "10"
+          },
+          "required_tools": ["llm-provider"]
+        }
+      ],
+      "metadata": {
+        "team": "orchestration",
+        "deployment": "kubernetes",
+        "resource_requirements": "medium"
+      }
+    },
+    {
+      "agent_id": "llm3-agent",
+      "name": "LLM3 Security Monitor",
+      "description": "Security and operations monitoring agent",
+      "url": "http://llm3-agent:8003",
+      "version": "1.0.0",
+      "capabilities": [
+        {
+          "name": "security_monitoring",
+          "description": "Monitor system security and detect anomalies",
+          "parameters": {
+            "alert_threshold": "medium",
+            "monitoring_interval": "60"
+          },
+          "required_tools": ["prometheus-client"]
+        },
+        {
+          "name": "compliance_checking",
+          "description": "Verify compliance with security policies",
+          "parameters": {
+            "policy_version": "v1.0",
+            "check_frequency": "hourly"
+          },
+          "required_tools": ["security-scanner"]
+        },
+        {
+          "name": "incident_response",
+          "description": "Respond to security incidents and alerts",
+          "parameters": {
+            "response_time": "immediate",
+            "escalation_levels": "3"
+          },
+          "required_tools": ["alerting", "notification"]
+        }
+      ],
+      "metadata": {
+        "team": "security-ops",
+        "deployment": "kubernetes",
+        "resource_requirements": "low"
+      }
+    }
+  ],
+  "role_templates": [
+    {
+      "role_id": "frontend_specialist",
+      "name": "Frontend Specialist",
+      "description": "Handles user-facing interactions and UI management",
+      "required_capabilities": ["user_interface", "rag_search"],
+      "preferred_agents": ["llm1-agent"],
+      "team_size_limits": {
+        "min": 1,
+        "max": 2
+      }
+    },
+    {
+      "role_id": "orchestrator",
+      "name": "Task Orchestrator",
+      "description": "Coordinates complex multi-step tasks and agent interactions",
+      "required_capabilities": ["task_orchestration", "task_planning"],
+      "preferred_agents": ["llm2-agent"],
+      "team_size_limits": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "role_id": "security_guard",
+      "name": "Security Guardian",
+      "description": "Monitors and protects system security",
+      "required_capabilities": ["security_monitoring", "compliance_checking"],
+      "preferred_agents": ["llm3-agent"],
+      "team_size_limits": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "role_id": "tool_specialist",
+      "name": "Tool Integration Specialist",
+      "description": "Manages external tool integrations and MCP connections",
+      "required_capabilities": ["mcp_integration"],
+      "preferred_agents": ["llm2-agent"],
+      "team_size_limits": {
+        "min": 0,
+        "max": 2
+      }
+    }
+  ],
+  "team_formation_rules": {
+    "default_team_size": {
+      "min": 2,
+      "max": 5
+    },
+    "required_roles": ["orchestrator"],
+    "optional_roles": ["frontend_specialist", "security_guard", "tool_specialist"],
+    "capability_redundancy": {
+      "critical_capabilities": ["task_orchestration"],
+      "redundancy_level": 1
+    },
+    "load_balancing": {
+      "strategy": "capability_aware",
+      "max_load_per_agent": 0.8,
+      "rebalance_threshold": 0.3
+    }
+  },
+  "metadata": {
+    "created_at": "2025-01-22T17:30:00Z",
+    "created_by": "atlas-phase4-implementation",
+    "last_updated": "2025-01-22T17:30:00Z",
+    "schema_version": "1.0.0"
+  }
+}

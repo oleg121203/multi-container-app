@@ -49,6 +49,20 @@ class AtlasConfig(BaseSettings):
     
     # Monitoring
     PROMETHEUS_PORT: int = 8000
+    
+    # Phase 4: Agent Registry settings
+    ATLAS_AGENT_REGISTRY_ENABLED: bool = True
+    ATLAS_AGENT_REGISTRY_PATH: str = "./config/agents.json"
+    ATLAS_AGENT_REGISTRY_PORT: int = 8500
+    ATLAS_AGENT_REGISTRY_DISCOVERY_INTERVAL: int = 30
+    ATLAS_AGENT_REGISTRY_HEALTH_TIMEOUT: int = 10
+    ATLAS_AGENT_REGISTRY_STORAGE_BACKEND: str = "redis"
+    
+    # Team Constructor settings
+    ATLAS_TEAM_CONSTRUCTOR_ENABLED: bool = True
+    ATLAS_TEAM_MAX_SIZE: int = 5
+    ATLAS_TEAM_FORMATION_TIMEOUT: int = 30
+    ATLAS_TEAM_COORDINATION_MODE: str = "event_driven"
 
 
 # Global config instance
