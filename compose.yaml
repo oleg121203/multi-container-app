@@ -67,5 +67,98 @@ services:
       timeout: 5s
       retries: 5
 
-#volumes:
+  # Phase 2: Vector database for RAG (MEM-01)
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 2: Redis for semantic cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # Phase 2: Ollama for LLM2 (CFG-02)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Phase 2: LLM1 Agent with RAG
+  llm1-agent:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile.llm1
+    ports:
+      - "8001:8001"
+    environment:
+      - QDRANT_HOST=qdrant
+      - REDIS_HOST=redis
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      - qdrant
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 2: LLM2 Orchestrator Agent
+  llm2-agent:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile.llm2
+    ports:
+      - "8002:8002"
+    environment:
+      - OLLAMA_HOST=ollama
+      - LINEAR_API_KEY=${LINEAR_API_KEY}
+      - ATLAS_LLM2_ALLOW_FALLBACK=${ATLAS_LLM2_ALLOW_FALLBACK:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  qdrant_data:
+  redis_data:
+  ollama_data:
   #database:
