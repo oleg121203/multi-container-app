@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies (python)
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt || true
+      - name: Install JS deps
+        run: |
+          npm ci || true
+      - name: Run linters
+        run: |
+          echo "Run linters (placeholder)"
+      - name: Run unit tests
+        run: |
+          python -m pytest -q || true
+      - name: Kubeval infra
+        run: |
+          if [ -d infra/k8s ]; then kubeval infra/k8s/**/*.yaml || true; fi

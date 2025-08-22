@@ -1,0 +1,9 @@
+{
+  "annotations": {"list": []},
+  "description": "Initial minimal dashboard for ATLAS: pod health and RAG latency",
+  "panels": [],
+  "schemaVersion": 16,
+  "title": "atlas-initial-dashboard",
+  "uid": "atlas-initial",
+  "version": 1
+}
