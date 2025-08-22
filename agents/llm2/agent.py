@@ -1,6 +1,6 @@
 """
-LLM2 Agent - Orchestrator with Ollama and AutoGen integration
-Local task orchestration with strict Ollama preference and Linear tool integration
+LLM2 Agent - Orchestrator with Ollama, AutoGen, and MCP Hub integration
+Local task orchestration with strict Ollama preference, Linear tool integration, and MCP services
 """
 import logging
 import asyncio
@@ -19,6 +19,15 @@ from autogen import AssistantAgent, UserProxyAgent
 from ..shared.config import config
 from ..shared.llm_providers import LLMProviderManager, LLMProvider, OllamaProvider
 from ..shared.linear_tool import LinearClient, LinearIssue, IssuePriority
+
+# Phase 3: Import MCP Hub integration
+try:
+    from ..mcp_hub.registry import mcp_registry
+    from ..mcp_hub.client import mcp_client
+    MCP_AVAILABLE = True
+except ImportError:
+    logger.warning("MCP Hub not available - MCP functionality disabled")
+    MCP_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +75,14 @@ class LLM2Agent:
             model=config.OLLAMA_MODEL
         )
         self.linear_client = LinearClient()
+        
+        # Phase 3: MCP Hub integration
+        self.mcp_enabled = MCP_AVAILABLE and os.getenv('ATLAS_MCP_SERVERS', '')
+        if self.mcp_enabled:
+            logger.info("MCP Hub integration enabled")
+        else:
+            logger.info("MCP Hub integration disabled")
+            
         self.audit_log: List[AuditLogEntry] = []
         self.app = FastAPI(title="LLM2 Orchestrator API", version="1.0.0")
         self._setup_routes()
@@ -120,12 +137,38 @@ class LLM2Agent:
     async def initialize(self):
         """Initialize all components"""
         await self.linear_client.initialize()
+        
+        # Phase 3: Initialize MCP Hub if enabled
+        if self.mcp_enabled:
+            try:
+                await mcp_registry.start()
+                await mcp_client.start()
+                logger.info("MCP Hub initialized successfully")
+                await self._log_audit_event(
+                    "mcp_hub_initialized", 
+                    {"servers_count": len(mcp_registry.servers)}, 
+                    "info"
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize MCP Hub: {e}")
+                await self._log_audit_event("mcp_hub_init_failed", {"error": str(e)}, "error")
+        
         await self._log_audit_event("system_initialized", {"timestamp": datetime.now().isoformat()}, "info")
         logger.info("LLM2 Agent initialized")
     
     async def shutdown(self):
         """Shutdown all components"""
         await self.linear_client.close()
+        
+        # Phase 3: Shutdown MCP Hub if enabled
+        if self.mcp_enabled:
+            try:
+                await mcp_client.stop()
+                await mcp_registry.stop()
+                logger.info("MCP Hub shutdown successfully")
+            except Exception as e:
+                logger.error(f"Error shutting down MCP Hub: {e}")
+        
         logger.info("LLM2 Agent shutdown")
     
     def _setup_routes(self):
@@ -155,6 +198,63 @@ class LLM2Agent:
                 ],
                 "total_count": len(self.audit_log)
             }
+        
+        # Phase 3: MCP Hub endpoints
+        @self.app.post("/mcp/execute")
+        async def execute_mcp_action(action_request: dict):
+            """Execute an action via MCP Hub"""
+            if not self.mcp_enabled:
+                raise HTTPException(status_code=503, detail="MCP Hub not enabled")
+            
+            try:
+                action = action_request.get('action')
+                args = action_request.get('args', {})
+                server_preference = action_request.get('server_preference')
+                
+                result = await mcp_client.execute_action(
+                    action=action,
+                    args=args,
+                    server_preference=server_preference
+                )
+                
+                await self._log_audit_event(
+                    "mcp_action_executed",
+                    {
+                        "action": action,
+                        "server_used": result.server_used,
+                        "status": result.status.value,
+                        "execution_time_ms": result.execution_time_ms
+                    },
+                    "info"
+                )
+                
+                return {
+                    "status": result.status.value,
+                    "result": result.result,
+                    "server_used": result.server_used,
+                    "execution_time_ms": result.execution_time_ms,
+                    "correlation_id": result.correlation_id
+                }
+                
+            except Exception as e:
+                await self._log_audit_event("mcp_action_failed", {"error": str(e)}, "error")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/mcp/servers")
+        async def get_mcp_servers():
+            """Get status of MCP servers"""
+            if not self.mcp_enabled:
+                raise HTTPException(status_code=503, detail="MCP Hub not enabled")
+            
+            return mcp_registry.get_registry_status()
+        
+        @self.app.get("/mcp/capabilities")
+        async def get_mcp_capabilities():
+            """Get available MCP capabilities"""
+            if not self.mcp_enabled:
+                raise HTTPException(status_code=503, detail="MCP Hub not enabled")
+            
+            return await mcp_client.get_available_capabilities()
         
         @self.app.get("/ollama_status")
         async def ollama_status():

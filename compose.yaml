@@ -149,10 +149,111 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # Phase 3: MCP Hub configuration
+      - ATLAS_MCP_SERVERS=${ATLAS_MCP_SERVERS:-playwright,automation,tts}
+      - ATLAS_MCP_PLAYWRIGHT_URL=http://mcp-playwright:4001
+      - ATLAS_MCP_AUTOMATION_URL=http://mcp-automation:4002
+      - ATLAS_MCP_TTS_URL=http://mcp-tts:4004
+      - ATLAS_MCP_STT_URL=http://mcp-stt:8080
     depends_on:
       - ollama
+      - mcp-playwright
+      - mcp-tts
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 3: LLM3 Security Agent
+  llm3-agent:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile.llm3
+    ports:
+      - "8003:8003"
+    environment:
+      - ATLAS_LLM3_PROVIDER=${ATLAS_LLM3_PROVIDER:-openai}
+      - ATLAS_LLM3_MODEL=${ATLAS_LLM3_MODEL:-gpt-4o-mini}
+      - ATLAS_LLM3_API_KEY=${ATLAS_LLM3_API_KEY:-${OPENAI_API_KEY}}
+      - ATLAS_LLM3_AUTO_MITIGATION=${ATLAS_LLM3_AUTO_MITIGATION:-false}
+      - ATLAS_LLM3_SEVERITY_THRESHOLD=${ATLAS_LLM3_SEVERITY_THRESHOLD:-HIGH}
+      - ATLAS_LLM3_PORT=8003
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 3: Playwright MCP Server
+  mcp-playwright:
+    build:
+      context: ./agents/mcp_servers/playwright
+      dockerfile: Dockerfile
+    ports:
+      - "4001:4001"
+    environment:
+      - MCP_PORT=4001
+      - PLAYWRIGHT_MAX_PAGES=5
+      - PLAYWRIGHT_PAGE_TIMEOUT=30000
+      - PLAYWRIGHT_ALLOWED_DOMAINS=${PLAYWRIGHT_ALLOWED_DOMAINS:-}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN  # Required for Chrome sandbox
+    shm_size: 2gb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 3: MCP STT (Speech-to-Text) Server
+  mcp-stt:
+    image: ghcr.io/openai/whisper:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - STT_MODEL=${ATLAS_STT_MODEL:-base}
+      - STT_LANGUAGE=${ATLAS_STT_LANGUAGE:-en}
+      - MCP_PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 3: Falco Security Monitoring
+  falco:
+    image: falcosecurity/falco-no-driver:latest
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock:ro
+      - /dev:/host/dev:ro
+      - /proc:/host/proc:ro
+      - /boot:/host/boot:ro
+      - /lib/modules:/host/lib/modules:ro
+      - /usr:/host/usr:ro
+      - /etc:/host/etc:ro
+      - ./config/falco:/etc/falco:ro
+    environment:
+      - FALCO_GRPC_ENABLED=true
+      - FALCO_GRPC_BIND_ADDRESS=0.0.0.0:5060
+      - FALCO_WEBHOOK_URL=http://llm3-agent:8003/falco-event
+    command:
+      - /usr/bin/falco
+      - --cri
+      - /run/containerd/containerd.sock
+      - --disable-source
+      - syscall
+      - --enable-source
+      - k8s_audit
+      - --k8s-api
+      - http://kubernetes:443
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:5060"]
       interval: 30s
       timeout: 10s
       retries: 3

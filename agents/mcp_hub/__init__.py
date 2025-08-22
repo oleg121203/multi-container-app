@@ -1,0 +1,1 @@
+"""MCP Hub - Service registry and discovery for containerized MCP servers"""

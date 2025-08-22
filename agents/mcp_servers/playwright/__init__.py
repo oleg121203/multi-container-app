@@ -1,0 +1,1 @@
+"""Playwright MCP Server - Browser automation with security isolation"""
