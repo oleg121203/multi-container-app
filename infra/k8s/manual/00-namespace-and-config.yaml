@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://kubernetesjsonschema.dev/v1.30.0-standalone/v1/Namespace.json
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,6 +8,7 @@ metadata:
     app.kubernetes.io/name: atlas
     app.kubernetes.io/part-of: atlas-system
 ---
+# yaml-language-server: $schema=https://kubernetesjsonschema.dev/v1.30.0-standalone/v1/ConfigMap.json
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,6 +21,7 @@ data:
   MCP_PORT: "4004"
   COQUI_TTS_MODEL: "tts_models/multilingual/multi-dataset/xtts_v2"
 ---
+# yaml-language-server: $schema=https://kubernetesjsonschema.dev/v1.30.0-standalone/storage.k8s.io/v1/StorageClass.json
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
