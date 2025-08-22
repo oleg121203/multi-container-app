@@ -13,12 +13,18 @@ from agents.shared.linear_tool import LinearClient
 
 # Skip LLM2 tests if autogen is not available
 try:
-    from agents.llm2.agent import LLM2Agent, TaskRequest
+    from agents.llm2.agent import LLM2Agent, TaskRequest  # type: ignore
     LLM2_AVAILABLE = True
 except ImportError:
     LLM2_AVAILABLE = False
-    LLM2Agent = None
-    TaskRequest = None
+    
+    # Create dummy classes for type checking when autogen is not available
+    class LLM2Agent:  # type: ignore
+        pass
+    
+    class TaskRequest:  # type: ignore
+        def __init__(self, **kwargs):
+            pass
 
 
 @pytest.mark.integration
@@ -79,7 +85,7 @@ class TestLLM1RAGIntegration:
 @pytest.mark.integration
 @pytest.mark.skipif(not LLM2_AVAILABLE, reason="autogen not available")
 @pytest.mark.asyncio
-class TestLLM2OllamaIntegration:
+class TestLLM2OllamaIntegration:  # type: ignore
     """Test LLM2 agent integration with Ollama"""
     
     @patch('agents.shared.llm_providers.ollama.AsyncClient')
@@ -93,10 +99,10 @@ class TestLLM2OllamaIntegration:
         }
         
         # Create agent
-        agent = LLM2Agent()
+        agent = LLM2Agent()  # type: ignore
         
         # Mock Linear client
-        with patch.object(agent.linear_client, 'create_issue') as mock_create_issue:
+        with patch.object(agent.linear_client, 'create_issue') as mock_create_issue:  # type: ignore
             mock_issue = Mock()
             mock_issue.id = "issue123"
             mock_issue.title = "Test Task"
@@ -105,24 +111,24 @@ class TestLLM2OllamaIntegration:
             mock_create_issue.return_value = mock_issue
             
             # Test task processing
-            task_request = TaskRequest(
+            task_request = TaskRequest(  # type: ignore
                 description="Implement new feature for user authentication",
                 requester_id="user123",
                 priority="high",
                 team_id="team1"
             )
             
-            response = await agent.process_task_request(task_request)
+            response = await agent.process_task_request(task_request)  # type: ignore
             
-            assert response.status == "planned"
-            assert response.agent_used == "ollama"
-            assert response.fallback_used is False
-            assert response.linear_issue is not None
-            assert response.linear_issue["id"] == "issue123"
+            assert response.status == "planned"  # type: ignore
+            assert response.agent_used == "ollama"  # type: ignore
+            assert response.fallback_used is False  # type: ignore
+            assert response.linear_issue is not None  # type: ignore
+            assert response.linear_issue["id"] == "issue123"  # type: ignore
             
             # Verify audit log
-            assert len(agent.audit_log) > 0
-            audit_events = [entry.event_type for entry in agent.audit_log]
+            assert len(agent.audit_log) > 0  # type: ignore
+            audit_events = [entry.event_type for entry in agent.audit_log]  # type: ignore
             assert "task_received" in audit_events
             assert "ollama_used" in audit_events
 
@@ -130,7 +136,7 @@ class TestLLM2OllamaIntegration:
 @pytest.mark.skipif(not LLM2_AVAILABLE, reason="autogen not available")
 @pytest.mark.integration
 @pytest.mark.asyncio
-class TestLLM2FallbackMechanism:
+class TestLLM2FallbackMechanism:  # type: ignore
     """Test LLM2 fallback mechanism when Ollama fails"""
     
     @patch('agents.shared.llm_providers.ollama.AsyncClient')
@@ -146,10 +152,10 @@ class TestLLM2FallbackMechanism:
         mock_client.generate.side_effect = Exception("Ollama connection failed")
         
         # Create agent
-        agent = LLM2Agent()
+        agent = LLM2Agent()  # type: ignore
         
         # Mock successful fallback provider
-        with patch.object(agent.llm_manager, 'generate') as mock_fallback:
+        with patch.object(agent.llm_manager, 'generate') as mock_fallback:  # type: ignore
             mock_fallback.return_value = Mock(
                 content="Fallback response",
                 provider=Mock(value="openai"),
@@ -157,20 +163,20 @@ class TestLLM2FallbackMechanism:
             )
             
             # Test task processing
-            task_request = TaskRequest(
+            task_request = TaskRequest(  # type: ignore
                 description="Simple task",
                 requester_id="user123",
                 priority="medium"
             )
             
-            response = await agent.process_task_request(task_request)
+            response = await agent.process_task_request(task_request)  # type: ignore
             
-            assert response.status == "planned"
-            assert response.agent_used == "openai"
-            assert response.fallback_used is True
+            assert response.status == "planned"  # type: ignore
+            assert response.agent_used == "openai"  # type: ignore
+            assert response.fallback_used is True  # type: ignore
             
             # Verify audit log shows fallback usage
-            audit_events = [entry.event_type for entry in agent.audit_log]
+            audit_events = [entry.event_type for entry in agent.audit_log]  # type: ignore
             assert "ollama_failed" in audit_events
             assert "fallback_initiated" in audit_events
             assert "fallback_succeeded" in audit_events
@@ -188,20 +194,20 @@ class TestLLM2FallbackMechanism:
         mock_client.generate.side_effect = Exception("Ollama connection failed")
         
         # Create agent
-        agent = LLM2Agent()
+        agent = LLM2Agent()  # type: ignore
         
         # Test task processing should fail
-        task_request = TaskRequest(
+        task_request = TaskRequest(  # type: ignore
             description="Simple task",
             requester_id="user123",
             priority="medium"
         )
         
         with pytest.raises(Exception, match="Ollama failed and fallback is disabled"):
-            await agent.process_task_request(task_request)
+            await agent.process_task_request(task_request)  # type: ignore
         
         # Verify audit log shows fallback was denied
-        audit_events = [entry.event_type for entry in agent.audit_log]
+        audit_events = [entry.event_type for entry in agent.audit_log]  # type: ignore
         assert "ollama_failed" in audit_events
         assert "fallback_denied" in audit_events
 

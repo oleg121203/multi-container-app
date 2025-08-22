@@ -4,7 +4,7 @@ GraphQL client with retry/circuit-breaker pattern
 """
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 from enum import Enum
 import time
@@ -68,14 +68,14 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.timeout = timeout
         self.failure_count = 0
-        self.last_failure_time = None
+        self.last_failure_time: Optional[float] = None
         self.state = CircuitBreakerState.CLOSED
     
     def call(self, func):
         """Decorator to wrap functions with circuit breaker"""
         async def wrapper(*args, **kwargs):
             if self.state == CircuitBreakerState.OPEN:
-                if time.time() - self.last_failure_time > self.timeout:
+                if self.last_failure_time is not None and time.time() - self.last_failure_time > self.timeout:
                     self.state = CircuitBreakerState.HALF_OPEN
                 else:
                     raise Exception("Circuit breaker is OPEN")
@@ -107,10 +107,10 @@ class CircuitBreaker:
 class LinearClient:
     """Linear API client with retry and circuit breaker"""
     
-    def __init__(self, api_key: str = None, max_retries: int = 3):
+    def __init__(self, api_key: Optional[str] = None, max_retries: int = 3):
         self.api_key = api_key or config.LINEAR_API_KEY
         self.max_retries = max_retries
-        self.client = None
+        self.client: Optional[Client] = None
         self.circuit_breaker = CircuitBreaker()
         
         if not self.api_key:
@@ -125,17 +125,31 @@ class LinearClient:
     
     async def close(self):
         """Close the client"""
-        if self.client:
-            await self.client.transport.close()
+        if self.client and hasattr(self.client, 'transport'):
+            try:
+                # Try async close first - transport.close() might be async or sync
+                transport = self.client.transport  # type: ignore
+                if hasattr(transport, 'close'):
+                    result = transport.close()  # type: ignore
+                    # Check if result is awaitable
+                    if hasattr(result, '__await__'):
+                        await result  # type: ignore
+            except Exception as e:
+                logger.warning(f"Error closing Linear client transport: {e}")
     
-    async def _execute_with_retry(self, query, variables: Dict = None):
+    async def _execute_with_retry(self, query, variables: Optional[Dict] = None):
         """Execute GraphQL query with retry logic"""
-        last_exception = None
+        if self.client is None:
+            raise ValueError("Client not initialized. Call initialize() first.")
+            
+        last_exception: Optional[Exception] = None
         
         for attempt in range(self.max_retries + 1):
             try:
                 @self.circuit_breaker.call
                 async def _execute():
+                    # Type guard to ensure client is not None
+                    assert self.client is not None
                     return await self.client.execute_async(query, variable_values=variables)
                 
                 return await _execute()
@@ -149,6 +163,9 @@ class LinearClient:
                 else:
                     logger.error(f"All {self.max_retries + 1} attempts failed")
         
+        # At this point, last_exception should never be None since we iterate at least once
+        if last_exception is None:
+            raise RuntimeError("Unexpected error: no exception recorded")
         raise last_exception
     
     async def get_teams(self) -> List[LinearTeam]:
@@ -317,8 +334,8 @@ class LinearClient:
     ) -> LinearIssue:
         """Update an existing issue"""
         
-        # Build update input
-        update_input = {"id": issue_id}
+        # Build update input - using Any to accommodate different value types
+        update_input: Dict[str, Any] = {"id": issue_id}
         
         if title is not None:
             update_input["title"] = title
@@ -327,7 +344,7 @@ class LinearClient:
             update_input["description"] = description
         
         if priority is not None:
-            update_input["priority"] = priority.value
+            update_input["priority"] = int(priority.value)  # Convert to int since Linear expects integer
         
         # For state updates, we need to use a different mutation
         if state is not None:
