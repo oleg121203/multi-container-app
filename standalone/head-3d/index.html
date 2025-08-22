@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMART_CHAT_SYSTEM · ATLAS</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- Optional: dev config (keys) -->
+    <script defer src="/config.js"></script>
+    <!-- Optional: three.js from CDN for demo; falls back to hero.png if unavailable -->
+    <script src="https://unpkg.com/three@0.159.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.159.0/examples/js/loaders/GLTFLoader.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="chat-panel">
+        <header class="chat-header">
+          <span>SMART_CHAT_SYSTEM</span>
+          <button class="btn btn-atlas">ATLAS</button>
+        </header>
+        <section class="chat-history" id="chatHistory">
+          <div class="msg msg-info">Smart Chat System готовий. Оберіть режим: Atlas або Grisha.</div>
+        </section>
+        <footer class="chat-compose">
+          <input id="chatInput" placeholder="Введіть повідомлення..." />
+          <div class="controls">
+            <button class="btn">UKR</button>
+            <button class="btn">TTS</button>
+            <button class="btn">ATLAS</button>
+            <button class="btn">GRISHA</button>
+            <button class="btn">SEND</button>
+            <button class="btn">MIC</button>
+            <button class="btn">CONF_OFF</button>
+          </div>
+        </footer>
+      </aside>
+
+      <main class="stage">
+        <!-- data-model can be overridden; JS will also check window.HEAD_MODEL_URL -->
+        <div class="head-3d" id="head3D" data-model="/assets/models/robot-head/<your-model>.glb">
+          <img class="fallback" src="/assets/hero.png" alt="ATLAS" />
+        </div>
+      </main>
+
+      <aside class="logs-panel">
+        <header class="logs-header">SERVER_LOGS</header>
+        <input class="logs-filter" placeholder="Filter logs..." />
+        <section class="logs-list" id="logsList"></section>
+      </aside>
+    </div>
+
+    <div class="status-bar">
+      <span>● Atlas</span>
+      <span>● Atlas 1</span>
+      <span>● Atlas 2</span>
+      <span>● Atlas Controller</span>
+      <span>● MCP</span>
+      <span>● Playwright</span>
+      <span>● Orchestrator</span>
+      <span>● Content MCP</span>
+      <span>● macOS Automator</span>
+      <span>● TTS</span>
+      <span>● UI</span>
+      <span>● Head 3D</span>
+      <span>● Frontend</span>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+  </html>

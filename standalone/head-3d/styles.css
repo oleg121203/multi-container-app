@@ -1,0 +1,35 @@
+:root{
+  --bg:#000;--fg:#b7ffb7;--muted:#0a0;--accent:#00ff66;--error:#ff4444;--panel:#021;--panel2:#010b0d;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 "Menlo","Consolas",monospace}
+.app{display:grid;grid-template-columns: 380px 1fr 340px;grid-template-rows: 1fr;gap:16px;padding:16px;min-height:calc(100vh - 36px)}
+.chat-panel,.logs-panel{background:var(--panel2);border:1px solid #033;border-radius:6px;display:flex;flex-direction:column;}
+.chat-header,.logs-header{padding:10px 12px;border-bottom:1px solid #033;background:var(--panel)}
+.btn{background:transparent;border:1px solid var(--muted);color:var(--fg);padding:4px 8px;margin:0 4px;border-radius:4px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn-atlas{background:var(--muted);color:#001}
+.chat-history{flex:1;overflow:auto;padding:12px}
+.msg{margin:8px 0;padding:8px;border:1px solid #033;border-radius:4px;background:#000}
+.msg-info{border-color:var(--accent);}
+.chat-compose{border-top:1px solid #033;padding:8px 12px}
+.chat-compose input{width:100%;background:#000;border:1px solid #033;color:var(--fg);padding:8px;border-radius:4px;margin-bottom:8px}
+.controls{display:flex;flex-wrap:wrap}
+
+.stage{position:relative;background:radial-gradient(ellipse at 60% 50%, #031 0%, #000 60%);border:1px solid #033;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.head-3d{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.head-3d canvas{max-width:100%;max-height:100%}
+.fallback{opacity:0.85;max-width:95%;max-height:95%}
+
+.logs-panel{overflow:hidden}
+.logs-filter{margin:8px 12px;background:#000;border:1px solid #033;color:var(--fg);padding:6px;border-radius:4px}
+.logs-list{flex:1;overflow:auto;padding:8px 12px}
+.log{padding:4px 0;border-bottom:1px dotted #033}
+.log .lvl{display:inline-block;width:56px}
+.lvl-ERR{color:var(--error)}
+.lvl-WARN{color:#ffaa00}
+.lvl-INFO{color:var(--accent)}
+
+.status-bar{position:fixed;left:0;right:0;bottom:0;height:36px;background:#010a0a;border-top:1px solid #033;color:var(--fg);display:flex;align-items:center;gap:14px;padding:0 12px}
+.status-bar span::before{content:"\25CF ";color:var(--accent);margin-right:4px}
