@@ -59,3 +59,12 @@ yarn-error.log*
 # Atlas specific
 atlas-progress.md
 .atlas-temp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+.python-version
