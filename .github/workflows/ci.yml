@@ -65,7 +65,15 @@ jobs:
             echo "Installing kubeval..."
             wget -q https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
             tar xf kubeval-linux-amd64.tar.gz
-            sudo mv kubeval /usr/local/bin
+            # Move the extracted kubeval binary into PATH; handle both with/without folder cases
+            if [ -f kubeval ]; then
+              sudo mv kubeval /usr/local/bin
+            elif [ -f kubeval-linux-amd64/kubeval ]; then
+              sudo mv kubeval-linux-amd64/kubeval /usr/local/bin
+            else
+              echo "kubeval binary not found after extraction; listing archive contents:" && tar tzf kubeval-linux-amd64.tar.gz || true
+              exit 1
+            fi
             echo "Validating K8s manifests..."
             find infra/k8s -name "*.yaml" -o -name "*.yml" | xargs kubeval || true
           else
