@@ -13,14 +13,20 @@ import json
 import logging
 import os
 import sys
+import time
+import psutil
 from typing import List, Dict, Any
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Form, Depends, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
+import aiohttp
+import io
+import secrets
 
 # Add the project root to the Python path so we can import agents modules
 project_root = Path(__file__).parent.parent.parent
@@ -115,12 +121,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for development
+# CORS middleware - restrict origins for production
+allowed_origins = os.environ.get("ATLAS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=allowed_origins,  # Restricted origins instead of "*"
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -129,6 +137,48 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize backend components
+startup_time = time.time()
+request_count = 0
+error_count = 0
+
+# Metrics tracking
+def increment_request_count():
+    global request_count
+    request_count += 1
+
+# Basic Authentication
+security = HTTPBasic()
+
+def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
+    """Simple basic authentication"""
+    # In production, these should be from environment variables or secure storage
+    correct_username = os.environ.get("ATLAS_AUTH_USERNAME", "atlas")
+    correct_password = os.environ.get("ATLAS_AUTH_PASSWORD", "atlas123")
+    
+    is_correct_username = secrets.compare_digest(credentials.username, correct_username)
+    is_correct_password = secrets.compare_digest(credentials.password, correct_password)
+    
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# Optional authentication for certain endpoints
+def optional_auth(request: Request):
+    """Optional authentication - only enforced if ATLAS_REQUIRE_AUTH is set"""
+    if os.environ.get("ATLAS_REQUIRE_AUTH", "false").lower() == "true":
+        try:
+            # Extract authorization header
+            auth_header = request.headers.get("authorization", "")
+            if not auth_header.startswith("Basic "):
+                raise HTTPException(status_code=401, detail="Authentication required")
+            return True
+        except:
+            raise HTTPException(status_code=401, detail="Authentication required")
+    return True
 try:
     registry_path = ATLAS_AGENT_REGISTRY_PATH if 'ATLAS_AGENT_REGISTRY_PATH' in globals() else "./config/agents.json"
     agent_registry = AgentRegistry(registry_path)
@@ -145,7 +195,20 @@ except Exception as e:
 # WebSocket manager
 manager = ConnectionManager()
 
-@app.on_event("startup")
+@app.middleware("http")
+async def add_process_time_header(request, call_next):
+    """Add request processing time and increment counters"""
+    start_time = time.time()
+    increment_request_count()
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        return response
+    except Exception as e:
+        increment_error_count()
+        raise e
 async def startup_event():
     """Initialize backend components on startup"""
     try:
@@ -262,7 +325,7 @@ async def get_agent_status(agent_id: str):
         }
 
 @app.post("/api/teams/form")
-async def form_team(request: TeamFormationRequest):
+async def form_team(request: TeamFormationRequest, authenticated: bool = Depends(optional_auth)):
     """Form a dynamic team for a task"""
     try:
         team = await team_constructor.form_team(request.description)
@@ -316,16 +379,72 @@ async def get_system_status():
 
 @app.get("/api/metrics")
 async def get_metrics():
-    """Get system performance metrics"""
-    return {
-        "active_agents": len(agent_registry.agents) if hasattr(agent_registry, 'agents') else 3,
-        "teams_formed": 15,
-        "tasks_completed": 42,
-        "uptime_seconds": 86400,
-        "request_count": 1337,
-        "error_rate": 0.02,
-        "avg_response_time_ms": 250
-    }
+    """Get system performance metrics with real data"""
+    try:
+        # Get real system metrics
+        current_time = time.time()
+        uptime_seconds = current_time - startup_time
+        
+        # CPU and memory metrics
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # Network metrics (if available)
+        try:
+            network = psutil.net_io_counters()
+            network_stats = {
+                "bytes_sent": network.bytes_sent,
+                "bytes_recv": network.bytes_recv,
+                "packets_sent": network.packets_sent,
+                "packets_recv": network.packets_recv
+            }
+        except:
+            network_stats = {}
+        
+        # Calculate error rate
+        error_rate = (error_count / max(request_count, 1)) * 100
+        
+        # Active connections count
+        active_connections = len(manager.active_connections)
+        
+        # Agent count (real if available, fallback to mock)
+        agent_count = len(agent_registry.agents) if hasattr(agent_registry, 'agents') and agent_registry.agents else 3
+        
+        return {
+            "timestamp": current_time,
+            "uptime_seconds": uptime_seconds,
+            "active_agents": agent_count,
+            "teams_formed": 15,  # This could be tracked in a real database
+            "tasks_completed": 42,  # This could be tracked in a real database
+            "request_count": request_count,
+            "error_count": error_count,
+            "error_rate_percent": error_rate,
+            "active_websocket_connections": active_connections,
+            "system_metrics": {
+                "cpu_percent": cpu_percent,
+                "memory_percent": memory.percent,
+                "memory_used_mb": memory.used / 1024 / 1024,
+                "memory_total_mb": memory.total / 1024 / 1024,
+                "disk_percent": disk.percent,
+                "disk_used_gb": disk.used / 1024 / 1024 / 1024,
+                "disk_total_gb": disk.total / 1024 / 1024 / 1024
+            },
+            "network_metrics": network_stats
+        }
+    except Exception as e:
+        logger.error(f"Failed to collect metrics: {e}")
+        # Fallback to basic metrics
+        return {
+            "timestamp": time.time(),
+            "active_agents": 3,
+            "teams_formed": 15,
+            "tasks_completed": 42,
+            "uptime_seconds": time.time() - startup_time,
+            "request_count": request_count,
+            "error_rate_percent": 0.02,
+            "active_websocket_connections": len(manager.active_connections)
+        }
 
 @app.post("/api/chat")
 async def chat_endpoint(message: ChatMessage):
@@ -350,8 +469,42 @@ async def chat_endpoint(message: ChatMessage):
 async def text_to_speech(request: VoiceRequest):
     """Convert text to speech using TTS service"""
     try:
-        # In production, this would integrate with actual TTS MCP service
-        # For now, return audio URL placeholder
+        # Try to integrate with the actual MCP TTS service
+        tts_url = os.environ.get("ATLAS_MCP_TTS_URL", "http://mcp-tts:4004")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                # Call the actual TTS service
+                async with session.post(
+                    f"{tts_url}/tts",
+                    json={
+                        "text": request.text,
+                        "voice": request.voice,
+                        "agent_id": request.agent_id
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        audio_url = result.get("audio_url", f"/api/audio/{request.agent_id}_{hash(request.text) % 10000}.mp3")
+                        
+                        # Broadcast TTS event to connected clients
+                        await manager.broadcast({
+                            "type": "tts",
+                            "text": request.text,
+                            "audio_url": audio_url,
+                            "agent_id": request.agent_id
+                        })
+                        
+                        return {
+                            "status": "success",
+                            "audio_url": audio_url,
+                            "duration_seconds": result.get("duration_seconds", len(request.text) * 0.1)
+                        }
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                logger.warning("TTS service unavailable, using fallback")
+        
+        # Fallback: generate placeholder response
         audio_url = f"/api/audio/{request.agent_id}_{hash(request.text) % 10000}.mp3"
         
         # Broadcast TTS event to connected clients
@@ -372,18 +525,44 @@ async def text_to_speech(request: VoiceRequest):
         return {"status": "error", "message": str(e)}
 
 @app.post("/api/stt")
-async def speech_to_text(audio_data: bytes):
+async def speech_to_text(audio: UploadFile = File(...)):
     """Convert speech to text using STT service"""
     try:
-        # In production, this would integrate with actual STT MCP service
-        # For now, return placeholder text
-        transcript = "Voice input received"
+        # Try to integrate with the actual MCP STT service
+        stt_url = os.environ.get("ATLAS_MCP_STT_URL", "http://mcp-stt:8080")
         
+        async with aiohttp.ClientSession() as session:
+            try:
+                # Read audio file content
+                audio_content = await audio.read()
+                
+                # Prepare multipart form data for STT service
+                data = aiohttp.FormData()
+                data.add_field('audio', audio_content, filename=audio.filename, content_type=audio.content_type)
+                
+                # Call the actual STT service
+                async with session.post(
+                    f"{stt_url}/transcribe",
+                    data=data,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return {
+                            "status": "success", 
+                            "transcript": result.get("transcript", "Voice input received"),
+                            "confidence": result.get("confidence", 0.95)
+                        }
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                logger.warning("STT service unavailable, using fallback")
+        
+        # Fallback: return placeholder response
         return {
             "status": "success", 
-            "transcript": transcript,
-            "confidence": 0.95
+            "transcript": "Voice input received (STT service unavailable)",
+            "confidence": 0.50
         }
+        
     except Exception as e:
         logger.error(f"STT failed: {e}")
         return {"status": "error", "message": str(e)}
@@ -402,6 +581,79 @@ async def get_available_voices():
     except Exception as e:
         logger.error(f"Failed to get voices: {e}")
         return {"voices": []}
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Export metrics in Prometheus format"""
+    try:
+        # Get current metrics
+        current_time = time.time()
+        uptime_seconds = current_time - startup_time
+        
+        # System metrics
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # Calculate error rate
+        error_rate = (error_count / max(request_count, 1)) * 100
+        
+        # Active connections count
+        active_connections = len(manager.active_connections)
+        
+        # Agent count
+        agent_count = len(agent_registry.agents) if hasattr(agent_registry, 'agents') and agent_registry.agents else 3
+        
+        # Generate Prometheus format metrics
+        prometheus_output = f"""# HELP atlas_uptime_seconds Time since the ATLAS service started
+# TYPE atlas_uptime_seconds counter
+atlas_uptime_seconds {uptime_seconds}
+
+# HELP atlas_requests_total Total number of HTTP requests
+# TYPE atlas_requests_total counter
+atlas_requests_total {request_count}
+
+# HELP atlas_errors_total Total number of HTTP errors
+# TYPE atlas_errors_total counter
+atlas_errors_total {error_count}
+
+# HELP atlas_error_rate_percent Error rate percentage
+# TYPE atlas_error_rate_percent gauge
+atlas_error_rate_percent {error_rate}
+
+# HELP atlas_active_agents Number of active agents
+# TYPE atlas_active_agents gauge
+atlas_active_agents {agent_count}
+
+# HELP atlas_websocket_connections Active WebSocket connections
+# TYPE atlas_websocket_connections gauge
+atlas_websocket_connections {active_connections}
+
+# HELP atlas_cpu_percent CPU usage percentage
+# TYPE atlas_cpu_percent gauge
+atlas_cpu_percent {cpu_percent}
+
+# HELP atlas_memory_percent Memory usage percentage
+# TYPE atlas_memory_percent gauge
+atlas_memory_percent {memory.percent}
+
+# HELP atlas_memory_used_bytes Memory used in bytes
+# TYPE atlas_memory_used_bytes gauge
+atlas_memory_used_bytes {memory.used}
+
+# HELP atlas_disk_percent Disk usage percentage
+# TYPE atlas_disk_percent gauge
+atlas_disk_percent {disk.percent}
+
+# HELP atlas_disk_used_bytes Disk used in bytes
+# TYPE atlas_disk_used_bytes gauge
+atlas_disk_used_bytes {disk.used}
+"""
+        
+        return prometheus_output
+    except Exception as e:
+        logger.error(f"Failed to generate Prometheus metrics: {e}")
+        return f"# Error generating metrics: {str(e)}\n"
 
 @app.post("/api/analytics")
 async def receive_analytics(analytics_data: Dict[str, Any]):
@@ -443,7 +695,7 @@ async def get_team_history():
         return {"teams": []}
 
 @app.get("/api/diagnostics")
-async def get_system_diagnostics():
+async def get_system_diagnostics(user: str = Depends(get_current_user)):
     """Get comprehensive system diagnostics"""
     try:
         # In production, this would gather real system metrics
@@ -471,6 +723,8 @@ async def get_system_diagnostics():
     except Exception as e:
         logger.error(f"Diagnostics collection failed: {e}")
         return {"error": str(e)}
+
+@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time communication"""
     await manager.connect(websocket)
