@@ -7,21 +7,15 @@
     <link rel="stylesheet" href="/static/css/atlas-ui.css">
     <script src="/static/js/vendor/three.min.js"></script>
     <script src="/static/js/vendor/gltf-loader.js"></script>
-    <style>
-        /* Inline critical CSS for faster loading */
-        body { margin: 0; background: #000; color: #b7ffb7; font-family: "Menlo", "Consolas", monospace; }
-        .loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .spinner { border: 2px solid #003344; border-top: 2px solid #00ff66; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
+    <!-- Moved critical CSS to /static/css/atlas-ui.css to avoid inline styles -->
 </head>
 <body>
     <div class="loading" id="loadingScreen">
         <div class="spinner"></div>
-        <div style="margin-left: 20px;">Initializing ATLAS Interface...</div>
+        <div class="ml-20">Initializing ATLAS Interface...</div>
     </div>
 
-    <div class="atlas-interface" id="mainInterface" style="display: none;">
+    <div class="atlas-interface hidden" id="mainInterface">
         <!-- Left Panel: Chat & Agent Management -->
         <aside class="chat-panel">
             <header class="panel-header">
@@ -80,7 +74,8 @@
         <aside class="logs-panel">
             <header class="panel-header">
                 <h2>SYSTEM_LOGS</h2>
-                <select id="logFilter">
+                <label for="logFilter" class="sr-only">Filter logs</label>
+                <select id="logFilter" aria-label="Filter logs">
                     <option value="all">All Levels</option>
                     <option value="error">ERROR</option>
                     <option value="warn">WARN</option>
@@ -136,7 +131,7 @@
     </footer>
 
     <!-- Team Formation Modal -->
-    <div class="modal" id="teamModal" style="display: none;">
+    <div class="modal hidden" id="teamModal">
         <div class="modal-content">
             <h3>Form Dynamic Team</h3>
             <p>Describe the task you want the team to work on:</p>

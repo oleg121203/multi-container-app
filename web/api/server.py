@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Form, Depends, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
@@ -33,33 +33,41 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from agents.registry.agent_registry import AgentRegistry
-    from agents.registry.team_constructor import TeamConstructor
-    from agents.registry.health_monitor import HealthMonitor
+    # Import real implementations and alias to *Class names to avoid type/name clashes
+    from agents.registry.agent_registry import AgentRegistry as RealAgentRegistry
+    from agents.registry.team_constructor import TeamConstructor as RealTeamConstructor
+    from agents.registry.health_monitor import HealthMonitor as RealHealthMonitor
     from agents.shared.config import config
     ATLAS_AGENT_REGISTRY_PATH = config.ATLAS_AGENT_REGISTRY_PATH
+    AgentRegistryClass = RealAgentRegistry
+    TeamConstructorClass = RealTeamConstructor
+    HealthMonitorClass = RealHealthMonitor
 except ImportError as e:
     print(f"Warning: Could not import agents modules: {e}")
     print("Running in development mode without full backend integration")
-    # Mock classes for development
-    class AgentRegistry:
+    # Fallback classes for development
+    class DevAgentRegistry:
         def __init__(self, path): 
             self.agents = {}
             self.path = path
         async def initialize(self): pass
         def get_agent(self, agent_id): return None
         
-    class TeamConstructor:
+    class DevTeamConstructor:
         def __init__(self, registry): 
             self.registry = registry
         async def form_team(self, description): 
             return {"members": [], "task": description}
             
-    class HealthMonitor:
+    class DevHealthMonitor:
         def __init__(self, registry): 
             self.registry = registry
         async def check_agent_health(self, agent_id): 
             return "active"
+
+    AgentRegistryClass = DevAgentRegistry
+    TeamConstructorClass = DevTeamConstructor
+    HealthMonitorClass = DevHealthMonitor
 
 # Request/Response Models
 class TaskRequest(BaseModel):
@@ -146,6 +154,10 @@ def increment_request_count():
     global request_count
     request_count += 1
 
+def increment_error_count():
+    global error_count
+    error_count += 1
+
 # Basic Authentication
 security = HTTPBasic()
 
@@ -181,16 +193,16 @@ def optional_auth(request: Request):
     return True
 try:
     registry_path = ATLAS_AGENT_REGISTRY_PATH if 'ATLAS_AGENT_REGISTRY_PATH' in globals() else "./config/agents.json"
-    agent_registry = AgentRegistry(registry_path)
-    team_constructor = TeamConstructor(agent_registry)
-    health_monitor = HealthMonitor(agent_registry)
+    agent_registry: Any = AgentRegistryClass(registry_path)
+    team_constructor: Any = TeamConstructorClass(agent_registry)
+    health_monitor: Any = HealthMonitorClass(agent_registry)
     logger.info(f"Backend components initialized with registry path: {registry_path}")
 except Exception as e:
     print(f"Warning: Backend initialization failed: {e}")
     # Use mock objects
-    agent_registry = AgentRegistry("./config/agents.json")
-    team_constructor = TeamConstructor(agent_registry)
-    health_monitor = HealthMonitor(agent_registry)
+    agent_registry: Any = AgentRegistryClass("./config/agents.json")
+    team_constructor: Any = TeamConstructorClass(agent_registry)
+    health_monitor: Any = HealthMonitorClass(agent_registry)
 
 # WebSocket manager
 manager = ConnectionManager()
@@ -205,6 +217,12 @@ async def add_process_time_header(request, call_next):
         response = await call_next(request)
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
+        # Count HTTP errors as errors as well (4xx/5xx)
+        try:
+            if response.status_code >= 400:
+                increment_error_count()
+        except Exception:
+            pass
         return response
     except Exception as e:
         increment_error_count()
@@ -216,6 +234,9 @@ async def startup_event():
         logger.info("ATLAS Web Interface API started successfully")
     except Exception as e:
         logger.error(f"Startup error: {e}")
+
+# Register startup event handler
+app.add_event_handler("startup", lambda: asyncio.create_task(startup_event()))
 
 # API Routes
 
@@ -305,6 +326,7 @@ async def get_agent_status(agent_id: str):
     try:
         agent = agent_registry.get_agent(agent_id)
         if agent:
+            # health_monitor may expect agent object; pass id, fallback handled inside
             status = await health_monitor.check_agent_health(agent_id)
             return {
                 "agent_id": agent_id,
@@ -393,13 +415,20 @@ async def get_metrics():
         # Network metrics (if available)
         try:
             network = psutil.net_io_counters()
-            network_stats = {
-                "bytes_sent": network.bytes_sent,
-                "bytes_recv": network.bytes_recv,
-                "packets_sent": network.packets_sent,
-                "packets_recv": network.packets_recv
-            }
-        except:
+            if network is not None:
+                ns = getattr(network, "_asdict", lambda: {})()
+                if isinstance(ns, dict) and ns:
+                    network_stats = {
+                        "bytes_sent": int(ns.get("bytes_sent", 0)),
+                        "bytes_recv": int(ns.get("bytes_recv", 0)),
+                        "packets_sent": int(ns.get("packets_sent", 0)),
+                        "packets_recv": int(ns.get("packets_recv", 0)),
+                    }
+                else:
+                    network_stats = {}
+            else:
+                network_stats = {}
+        except Exception:
             network_stats = {}
         
         # Calculate error rate
@@ -589,21 +618,21 @@ async def prometheus_metrics():
         # Get current metrics
         current_time = time.time()
         uptime_seconds = current_time - startup_time
-        
+
         # System metrics
         cpu_percent = psutil.cpu_percent(interval=0.1)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
-        
+
         # Calculate error rate
         error_rate = (error_count / max(request_count, 1)) * 100
-        
+
         # Active connections count
         active_connections = len(manager.active_connections)
-        
+
         # Agent count
         agent_count = len(agent_registry.agents) if hasattr(agent_registry, 'agents') and agent_registry.agents else 3
-        
+
         # Generate Prometheus format metrics
         prometheus_output = f"""# HELP atlas_uptime_seconds Time since the ATLAS service started
 # TYPE atlas_uptime_seconds counter
@@ -649,11 +678,10 @@ atlas_disk_percent {disk.percent}
 # TYPE atlas_disk_used_bytes gauge
 atlas_disk_used_bytes {disk.used}
 """
-        
-        return prometheus_output
+        return PlainTextResponse(content=prometheus_output)
     except Exception as e:
         logger.error(f"Failed to generate Prometheus metrics: {e}")
-        return f"# Error generating metrics: {str(e)}\n"
+        return PlainTextResponse(content=f"# Error generating metrics: {str(e)}\n")
 
 @app.post("/api/analytics")
 async def receive_analytics(analytics_data: Dict[str, Any]):

@@ -1,3 +1,13 @@
+/* Utility classes to replace former inline styles */
+.ml-20 { margin-left: 20px; }
+.hidden { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Loading and spinner styles moved from inline */
+body { margin: 0; background: #000; color: #b7ffb7; font-family: "Menlo", "Consolas", monospace; }
+.loading { display: flex; justify-content: center; align-items: center; height: 100vh; }
+.spinner { border: 2px solid #003344; border-top: 2px solid #00ff66; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 /* ATLAS Web Interface Styles */
 :root {
     --bg-primary: #000000;
