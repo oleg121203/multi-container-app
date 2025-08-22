@@ -7,7 +7,7 @@ python-dotenv==1.0.0
 
 # RAG and vector storage (MEM-01)
 qdrant-client==1.7.0
-sentence-transformers==2.2.2
+sentence-transformers>=2.7.0  # Updated for huggingface_hub compatibility
 langchain==0.1.0
 langchain-community==0.0.10
 tiktoken==0.5.2

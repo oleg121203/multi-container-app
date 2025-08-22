@@ -11,7 +11,7 @@ import time
 
 import httpx
 from gql import gql, Client
-from gql.transport.httpx import HTTPXAsyncTransport
+from gql.transport.aiohttp import AIOHTTPTransport
 
 from .config import config
 
@@ -119,7 +119,7 @@ class LinearClient:
     async def initialize(self):
         """Initialize the GraphQL client"""
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        transport = HTTPXAsyncTransport(url=config.LINEAR_API_URL, headers=headers)
+        transport = AIOHTTPTransport(url=config.LINEAR_API_URL, headers=headers)
         self.client = Client(transport=transport, fetch_schema_from_transport=True)
         logger.info("Linear client initialized")
     

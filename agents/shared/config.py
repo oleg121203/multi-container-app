@@ -3,14 +3,13 @@ Shared configuration and utilities for ATLAS agents
 """
 import os
 from typing import Dict, List, Optional
-from pydantic import ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AtlasConfig(BaseSettings):
     """Global configuration for ATLAS system"""
     
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
         extra="ignore"  # Ignore extra fields from .env

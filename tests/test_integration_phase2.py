@@ -8,9 +8,17 @@ from unittest.mock import Mock, AsyncMock, patch
 import json
 
 from agents.llm1.agent import LLM1Agent, UserQuery
-from agents.llm2.agent import LLM2Agent, TaskRequest
 from agents.shared.rag_system import RAGSystem, Document
 from agents.shared.linear_tool import LinearClient
+
+# Skip LLM2 tests if autogen is not available
+try:
+    from agents.llm2.agent import LLM2Agent, TaskRequest
+    LLM2_AVAILABLE = True
+except ImportError:
+    LLM2_AVAILABLE = False
+    LLM2Agent = None
+    TaskRequest = None
 
 
 @pytest.mark.integration
@@ -69,6 +77,7 @@ class TestLLM1RAGIntegration:
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(not LLM2_AVAILABLE, reason="autogen not available")
 @pytest.mark.asyncio
 class TestLLM2OllamaIntegration:
     """Test LLM2 agent integration with Ollama"""
@@ -118,6 +127,7 @@ class TestLLM2OllamaIntegration:
             assert "ollama_used" in audit_events
 
 
+@pytest.mark.skipif(not LLM2_AVAILABLE, reason="autogen not available")
 @pytest.mark.integration
 @pytest.mark.asyncio
 class TestLLM2FallbackMechanism:
