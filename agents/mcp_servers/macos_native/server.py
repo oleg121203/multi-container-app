@@ -9,6 +9,7 @@ import os
 import asyncio
 import logging
 import subprocess
+import importlib
 import json
 from typing import List, Dict, Any, Optional
 
@@ -18,13 +19,17 @@ import mcp.server.stdio
 from fastapi import FastAPI
 import uvicorn
 
+# Optional macOS native frameworks (only on macOS). Use importlib to avoid static import errors.
 try:
-    import Foundation
-    import AppKit
-    import ApplicationServices
+    Foundation = importlib.import_module("Foundation")  # type: ignore[assignment]
+    AppKit = importlib.import_module("AppKit")  # type: ignore[assignment]
+    ApplicationServices = importlib.import_module("ApplicationServices")  # type: ignore[assignment]
     NATIVE_APIS_AVAILABLE = True
-except ImportError:
+except Exception:
     logging.warning("Native macOS APIs not available")
+    Foundation = None  # type: ignore[assignment]
+    AppKit = None  # type: ignore[assignment]
+    ApplicationServices = None  # type: ignore[assignment]
     NATIVE_APIS_AVAILABLE = False
 
 # Configure logging
@@ -393,10 +398,16 @@ async def main():
     config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=MCP_PORT, log_level="info")
     server = uvicorn.Server(config)
     
+    async def _run_mcp_stdio():
+        # Correct usage of stdio server: use as async context manager and run the MCP app
+        from mcp.server.stdio import stdio_server
+        async with stdio_server() as (read, write):
+            await app.run(read, write, app.create_initialization_options())
+    
     # Run both servers
     await asyncio.gather(
         server.serve(),
-        mcp.server.stdio.stdio_server().serve()
+        _run_mcp_stdio()
     )
 
 if __name__ == "__main__":

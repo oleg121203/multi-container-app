@@ -22,11 +22,14 @@ try:
     AUTOGEN_AVAILABLE = True
 except ImportError:
     try:
-        # Try pyautogen for newer versions
-        import pyautogen as autogen
-        from pyautogen import AssistantAgent, UserProxyAgent
+        # Try importing pyautogen dynamically to avoid static import errors
+        import importlib
+        _pyautogen = importlib.import_module('pyautogen')
+        autogen = _pyautogen  # type: ignore[assignment]
+        AssistantAgent = getattr(_pyautogen, 'AssistantAgent')  # type: ignore[assignment]
+        UserProxyAgent = getattr(_pyautogen, 'UserProxyAgent')  # type: ignore[assignment]
         AUTOGEN_AVAILABLE = True
-    except ImportError:
+    except Exception:
         # Fallback for local development without autogen
         print("Warning: AutoGen not available - some features will be disabled")
         AUTOGEN_AVAILABLE = False
@@ -41,8 +44,8 @@ except ImportError:
             def __init__(self, *args, **kwargs):
                 pass
                 
-        AssistantAgent = MockAssistantAgent
-        UserProxyAgent = MockUserProxyAgent
+        AssistantAgent = MockAssistantAgent  # type: ignore[assignment]
+        UserProxyAgent = MockUserProxyAgent  # type: ignore[assignment]
 
 from shared.config import config
 from shared.llm_providers import LLMProviderManager, LLMProvider, OllamaProvider

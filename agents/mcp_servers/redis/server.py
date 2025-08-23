@@ -17,6 +17,26 @@ import uvicorn
 
 logger = logging.getLogger(__name__)
 
+# Helper: safely convert bytes-like objects to str
+def _to_str_if_byteslike(x: Any) -> Any:
+    """Return UTF-8 string if x is bytes/bytearray/memoryview; otherwise return x as-is.
+    If decode fails, return bytes value instead of raising.
+    """
+    try:
+        if isinstance(x, memoryview):
+            try:
+                return x.tobytes().decode('utf-8')
+            except Exception:
+                return x.tobytes()
+        if isinstance(x, (bytes, bytearray)):
+            try:
+                return x.decode('utf-8')  # type: ignore[attr-defined]
+            except Exception:
+                return bytes(x)
+    except Exception:
+        return x
+    return x
+
 class RedisOperation(BaseModel):
     operation: str
     key: Optional[str] = None
@@ -43,7 +63,7 @@ class RedisMCPServer:
     def __init__(self):
         self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
         self.port = int(os.getenv('MCP_SERVER_PORT', '4005'))
-    self.redis_client: Any = None
+        self.redis_client: Any = None
         self.app = FastAPI(title="Redis MCP Server", version="1.0.0")
         self._setup_routes()
     
@@ -145,8 +165,8 @@ class RedisMCPServer:
         """Perform the actual Redis operation"""
         if not self.redis_client:
             raise Exception("Redis client not initialized")
-    client: Any = self.redis_client
-            
+        client: Any = self.redis_client
+        
         op = operation.operation.lower()
         key = operation.key
         value = operation.value
@@ -163,9 +183,7 @@ class RedisMCPServer:
             if key_s is None:
                 raise ValueError("Key is required for get operation")
             result = await client.get(key_s)
-            if isinstance(result, (bytes, bytearray, memoryview)):
-                return result.decode('utf-8')
-            return result
+            return _to_str_if_byteslike(result)
         
         elif op == "set":
             if key_s is None or value is None:
@@ -211,17 +229,13 @@ class RedisMCPServer:
             if key_s is None:
                 raise ValueError("Key is required for lpop operation")
             result = await client.lpop(key_s)
-            if isinstance(result, (bytes, bytearray, memoryview)):
-                return result.decode('utf-8')
-            return result
+            return _to_str_if_byteslike(result)
         
         elif op == "rpop":
             if key_s is None:
                 raise ValueError("Key is required for rpop operation")
             result = await client.rpop(key_s)
-            if isinstance(result, (bytes, bytearray, memoryview)):
-                return result.decode('utf-8')
-            return result
+            return _to_str_if_byteslike(result)
         
         elif op == "lrange":
             if key_s is None:
@@ -229,7 +243,7 @@ class RedisMCPServer:
             start = params.get('start', 0)
             end = params.get('end', -1)
             results = await client.lrange(key_s, start, end)
-            return [r.decode('utf-8') if isinstance(r, (bytes, bytearray, memoryview)) else r for r in results]
+            return [_to_str_if_byteslike(r) for r in results]
         
         elif op == "llen":
             if key_s is None:
@@ -252,19 +266,13 @@ class RedisMCPServer:
             if field is None:
                 raise ValueError("Field is required for hget operation")
             result = await client.hget(key_s, field)
-            if isinstance(result, (bytes, bytearray, memoryview)):
-                return result.decode('utf-8')
-            return result
+            return _to_str_if_byteslike(result)
         
         elif op == "hgetall":
             if key_s is None:
                 raise ValueError("Key is required for hgetall operation")
             results = await client.hgetall(key_s)
-            return {(
-                k.decode('utf-8') if isinstance(k, (bytes, bytearray, memoryview)) else k
-            ): (
-                v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v
-            ) for k, v in results.items()}
+            return { _to_str_if_byteslike(k): _to_str_if_byteslike(v) for k, v in results.items() }
         
         elif op == "hdel":
             if key_s is None:
@@ -289,7 +297,7 @@ class RedisMCPServer:
             if key_s is None:
                 raise ValueError("Key is required for smembers operation")
             results = await client.smembers(key_s)
-            return [r.decode('utf-8') if isinstance(r, (bytes, bytearray, memoryview)) else r for r in results]
+            return [_to_str_if_byteslike(r) for r in results]
         
         elif op == "sismember":
             if key_s is None or value is None:
@@ -311,11 +319,8 @@ class RedisMCPServer:
             withscores = params.get('withscores', False)
             results = await client.zrange(key_s, start, end, withscores=withscores)
             if withscores:
-                return [(
-                    r[0].decode('utf-8') if isinstance(r[0], (bytes, bytearray, memoryview)) else r[0],
-                    r[1]
-                ) for r in results]
-            return [r.decode('utf-8') if isinstance(r, (bytes, bytearray, memoryview)) else r for r in results]
+                return [( _to_str_if_byteslike(r[0]), r[1]) for r in results]
+            return [_to_str_if_byteslike(r) for r in results]
         
         elif op == "zrem":
             if key_s is None or value is None:
@@ -413,7 +418,7 @@ class RedisMCPServer:
                     
                     key_analysis[key] = {
                         'memory_bytes': memory_usage,
-                        'type': key_type.decode('utf-8') if isinstance(key_type, (bytes, bytearray, memoryview)) else (key_type or 'unknown'),
+                        'type': _to_str_if_byteslike(key_type) or 'unknown',
                         'ttl': ttl
                     }
                 except Exception:
@@ -452,39 +457,35 @@ class RedisMCPServer:
             for key in keys:
                 try:
                     key_type = await client.type(key)
-                    key_type_str = key_type.decode('utf-8') if isinstance(key_type, (bytes, bytearray, memoryview)) else (key_type or 'string')
+                    key_type_str = _to_str_if_byteslike(key_type) or 'string'
                     ttl = await client.ttl(key)
                     
                     if key_type_str == 'string':
                         value = await client.get(key)
                         backup_data['data'][key] = {
                             'type': 'string',
-                            'value': (value.decode('utf-8') if isinstance(value, (bytes, bytearray, memoryview)) else value),
+                            'value': _to_str_if_byteslike(value),
                             'ttl': ttl
                         }
                     elif key_type_str == 'list':
                         value = await client.lrange(key, 0, -1)
                         backup_data['data'][key] = {
                             'type': 'list',
-                            'value': [v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v for v in value],
+                            'value': [_to_str_if_byteslike(v) for v in value],
                             'ttl': ttl
                         }
                     elif key_type_str == 'hash':
                         value = await client.hgetall(key)
                         backup_data['data'][key] = {
                             'type': 'hash',
-                            'value': {(
-                                k.decode('utf-8') if isinstance(k, (bytes, bytearray, memoryview)) else k
-                            ): (
-                                v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v
-                            ) for k, v in value.items()},
+                            'value': { _to_str_if_byteslike(k): _to_str_if_byteslike(v) for k, v in value.items() },
                             'ttl': ttl
                         }
                     elif key_type_str == 'set':
                         value = await client.smembers(key)
                         backup_data['data'][key] = {
                             'type': 'set',
-                            'value': [v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v for v in value],
+                            'value': [_to_str_if_byteslike(v) for v in value],
                             'ttl': ttl
                         }
                         
