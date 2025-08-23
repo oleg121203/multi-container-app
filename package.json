@@ -1,6 +1,7 @@
 {
   "name": "atlas-multi-container-app",
   "version": "1.0.0",
+  "type": "module",
   "description": "ATLAS Multi-Agent Orchestration Platform",
   "scripts": {
     "test:e2e": "playwright test",

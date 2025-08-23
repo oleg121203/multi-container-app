@@ -19,18 +19,18 @@ app.use(express.json({ limit: "2mb" }));
 app.use(cors());
 
 // Paths
-const demoRoot = path.resolve(__dirname, "../../standalone/head-3d");
+const demoRoot = path.resolve(__dirname, "../standalone/head-3d");
 // Serve assets from standard frontend folder
-const activeAssets = path.resolve(__dirname, "../../frontend/public");
+const activeAssets = path.resolve(__dirname, "../frontend/public");
 const archivedAssets = path.resolve(
   __dirname,
-  "../../archive/frontend-face/public"
+  "../archive/frontend-face/public"
 );
 const assetsRoot = fs.existsSync(activeAssets) ? activeAssets : archivedAssets;
 
 // Optionally load config/environment.env (without overriding existing vars)
 try {
-  const envPath = path.resolve(__dirname, "../../config/environment.env");
+  const envPath = path.resolve(__dirname, "../config/environment.env");
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath, override: false });
   }

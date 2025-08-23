@@ -1,0 +1,4 @@
+// Demo audio file placeholder
+// In a real implementation, this would be a WAV audio file
+// For demo purposes, this file serves as a placeholder
+console.log('Demo audio file - replace with actual TTS output');
