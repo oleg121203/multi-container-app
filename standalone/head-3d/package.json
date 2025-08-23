@@ -1,0 +1,14 @@
+{
+  "name": "head-3d-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone 3D head demo static server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "HEAD3D_PORT=8080 node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

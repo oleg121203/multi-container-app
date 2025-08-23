@@ -795,8 +795,15 @@ async def websocket_endpoint(websocket: WebSocket):
 frontend_dir = Path(__file__).parent.parent / "frontend"
 static_dir = frontend_dir / "static"
 
+# Also serve the standalone 3D head demo under /head-3d for convenience
+head3d_dir = Path(__file__).parent.parent.parent / "standalone" / "head-3d"
+
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+if head3d_dir.exists():
+    # html=True allows directory index serving (index.html)
+    app.mount("/head-3d", StaticFiles(directory=str(head3d_dir), html=True), name="head-3d")
 
 if __name__ == "__main__":
     import uvicorn
