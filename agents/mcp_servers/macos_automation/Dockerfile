@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     xvfb \
     x11-utils \
+    x11-xserver-utils \
+    python3-tk \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -16,6 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Copy startup script and make executable
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Set display environment variable
+ENV DISPLAY=:99
+
 # Expose MCP server port
 EXPOSE 4007
 
@@ -24,4 +34,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:4007/health || exit 1
 
 # Run the MCP server
-CMD ["python", "server.py"]
+CMD ["/app/start.sh"]

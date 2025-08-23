@@ -13,6 +13,10 @@ from typing import List, Dict, Any, Tuple
 import base64
 from io import BytesIO
 
+# Set display for headless environments
+if 'DISPLAY' not in os.environ:
+    os.environ['DISPLAY'] = ':99'
+
 import mcp.types as types
 from mcp.server import Server
 import mcp.server.stdio
@@ -401,11 +405,8 @@ async def main():
     config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=MCP_PORT, log_level="info")
     server = uvicorn.Server(config)
     
-    # Run both servers
-    await asyncio.gather(
-        server.serve(),
-        mcp.server.stdio.stdio_server().serve()
-    )
+    # For now, just run the FastAPI server (health check endpoint)
+    await server.serve()
 
 if __name__ == "__main__":
     asyncio.run(main())

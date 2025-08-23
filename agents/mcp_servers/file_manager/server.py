@@ -35,9 +35,15 @@ def parse_size(size_str: str) -> int:
     """Parse size string like '10MB' to bytes"""
     units = {'B': 1, 'KB': 1024, 'MB': 1024**2, 'GB': 1024**3}
     size_str = size_str.upper().strip()
-    for unit, multiplier in units.items():
+    
+    # Sort units by length (descending) to check longer units first
+    for unit, multiplier in sorted(units.items(), key=lambda x: len(x[0]), reverse=True):
         if size_str.endswith(unit):
-            return int(size_str[:-len(unit)]) * multiplier
+            number_part = size_str[:-len(unit)].strip()
+            if number_part:  # Make sure we have a number part
+                return int(number_part) * multiplier
+    
+    # If no unit found, assume bytes
     return int(size_str)
 
 MAX_SIZE_BYTES = parse_size(MAX_FILE_SIZE)
@@ -365,21 +371,23 @@ async def health_check():
     }
 
 async def main():
-    """Run the MCP server"""
+    """Main entry point"""
     logger.info(f"Starting File Manager MCP Server on port {MCP_PORT}")
-    logger.info(f"Allowed paths: {ALLOWED_PATHS}")
-    logger.info(f"Max file size: {MAX_FILE_SIZE}")
     
-    # Start FastAPI server for health checks
+    # Create FastAPI app for health check
+    fastapi_app = FastAPI()
+    
+    @fastapi_app.get("/health")
+    async def health():
+        return {"status": "healthy", "service": "file-manager-mcp"}
+    
+    # Start uvicorn server
     import uvicorn
     config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=MCP_PORT, log_level="info")
     server = uvicorn.Server(config)
     
-    # Run both servers
-    await asyncio.gather(
-        server.serve(),
-        mcp.server.stdio.stdio_server().serve()
-    )
+    # For now, just run the FastAPI server (health check endpoint)
+    await server.serve()
 
 if __name__ == "__main__":
     asyncio.run(main())
