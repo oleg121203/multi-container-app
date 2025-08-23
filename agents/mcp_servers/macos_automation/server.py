@@ -28,14 +28,24 @@ try:
     import cv2
     import numpy as np
     from PIL import Image
-    
-    # Configure PyAutoGUI safety
-    pyautogui.FAILSAFE = True
-    pyautogui.PAUSE = 0.1
+    # Ensure pyautogui is properly initialized
+    if pyautogui is not None:
+        pyautogui.FAILSAFE = True
+        pyautogui.PAUSE = 0.1
     
 except ImportError as e:
     logging.warning(f"Some automation libraries not available: {e}")
     pyautogui = None
+
+# Helper functions for safe pyautogui usage
+def safe_pyautogui_call(method_name: str, *args, **kwargs):
+    """Safely call pyautogui methods with None check"""
+    if pyautogui is None:
+        raise RuntimeError("pyautogui is not available")
+    method = getattr(pyautogui, method_name, None)
+    if method is None:
+        raise AttributeError(f"pyautogui.{method_name} is not available")
+    return method(*args, **kwargs)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -235,11 +245,11 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             return_base64 = arguments.get("return_base64", False)
             
             if region:
-                screenshot = pyautogui.screenshot(region=(
+                screenshot = safe_pyautogui_call("screenshot", region=(
                     region["x"], region["y"], region["width"], region["height"]
                 ))
             else:
-                screenshot = pyautogui.screenshot()
+                screenshot = safe_pyautogui_call("screenshot")
             
             if return_base64:
                 buffer = BytesIO()
@@ -267,11 +277,11 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             x, y = validate_coordinates(x, y)
             
             if button == "left":
-                pyautogui.click(x, y, clicks=clicks)
+                safe_pyautogui_call("click", x, y, clicks=clicks)
             elif button == "right":
-                pyautogui.rightClick(x, y)
+                safe_pyautogui_call("rightClick", x, y)
             elif button == "middle":
-                pyautogui.middleClick(x, y)
+                safe_pyautogui_call("middleClick", x, y)
             
             time.sleep(CLICK_DELAY)
             
@@ -286,7 +296,7 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             duration = arguments.get("duration", MOVE_DURATION)
             
             x, y = validate_coordinates(x, y)
-            pyautogui.moveTo(x, y, duration=duration)
+            safe_pyautogui_call("moveTo", x, y, duration=duration)
             
             return [types.TextContent(
                 type="text",
@@ -300,9 +310,9 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             # Handle key combinations
             if '+' in keys:
                 key_parts = [k.strip() for k in keys.split('+')]
-                pyautogui.hotkey(*key_parts, interval=interval)
+                safe_pyautogui_call("hotkey", *key_parts, interval=interval)
             else:
-                pyautogui.press(keys)
+                safe_pyautogui_call("press", keys)
             
             time.sleep(interval)
             
@@ -315,7 +325,7 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             text = arguments["text"]
             interval = arguments.get("interval", 0.01)
             
-            pyautogui.typewrite(text, interval=interval)
+            safe_pyautogui_call("typewrite", text, interval=interval)
             
             return [types.TextContent(
                 type="text",
@@ -332,16 +342,16 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             
             try:
                 if region:
-                    location = pyautogui.locateOnScreen(
+                    location = safe_pyautogui_call("locateOnScreen",
                         image_path,
                         confidence=confidence,
                         region=(region["x"], region["y"], region["width"], region["height"])
                     )
                 else:
-                    location = pyautogui.locateOnScreen(image_path, confidence=confidence)
+                    location = safe_pyautogui_call("locateOnScreen", image_path, confidence=confidence)
                 
                 if location:
-                    center = pyautogui.center(location)
+                    center = safe_pyautogui_call("center", location)
                     return [types.TextContent(
                         type="text",
                         text=f"Image found at: {location}\nCenter: {center}"
@@ -352,21 +362,21 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
                         text=f"Image not found with confidence {confidence}"
                     )]
             
-            except pyautogui.ImageNotFoundException:
+            except Exception:
                 return [types.TextContent(
                     type="text",
                     text=f"Image not found: {image_path}"
                 )]
         
         elif name == "get_screen_size":
-            width, height = pyautogui.size()
+            width, height = safe_pyautogui_call("size")
             return [types.TextContent(
                 type="text",
                 text=f"Screen size: {width} x {height}"
             )]
         
         elif name == "get_mouse_position":
-            x, y = pyautogui.position()
+            x, y = safe_pyautogui_call("position")
             return [types.TextContent(
                 type="text",
                 text=f"Mouse position: ({x}, {y})"

@@ -74,8 +74,11 @@ def run_kubectl(args: List[str], namespace: Optional[str] = None) -> str:
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"kubectl error: {e.stderr}")
 
-def parse_yaml_resource(yaml_content: str) -> List[Dict[str, Any]]:
-    """Parse YAML content into Kubernetes resources"""
+def parse_yaml_resource(yaml_content: str) -> List[Any]:
+    """Parse YAML content into Kubernetes resources.
+    Note: YAML documents can be dicts or lists; we therefore return List[Any]
+    to avoid overly strict typing that can misrepresent valid inputs.
+    """
     try:
         resources = list(yaml.safe_load_all(yaml_content))
         return [r for r in resources if r is not None]
@@ -334,14 +337,14 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
         
         elif name == "kubectl_get":
             resource_type = arguments["resource_type"]
-            name = arguments.get("name")
+            resource_name = arguments.get("name")
             namespace = arguments.get("namespace", DEFAULT_NAMESPACE)
             output = arguments.get("output", "yaml")
             all_namespaces = arguments.get("all_namespaces", False)
             
             args = ["get", resource_type]
-            if name:
-                args.append(name)
+            if resource_name:
+                args.append(resource_name)
             if output != "wide":
                 args.extend(["-o", output])
             if all_namespaces:
@@ -357,11 +360,11 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
         
         elif name == "kubectl_delete":
             resource_type = arguments["resource_type"]
-            name = arguments["name"]
+            resource_name = arguments["name"]
             namespace = arguments.get("namespace", DEFAULT_NAMESPACE)
             force = arguments.get("force", False)
             
-            args = ["delete", resource_type, name]
+            args = ["delete", resource_type, resource_name]
             if force:
                 args.extend(["--force", "--grace-period=0"])
             
@@ -369,20 +372,20 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
             
             return [types.TextContent(
                 type="text",
-                text=f"Deleted {resource_type}/{name}:\n{result}"
+                text=f"Deleted {resource_type}/{resource_name}:\n{result}"
             )]
         
         elif name == "kubectl_describe":
             resource_type = arguments["resource_type"]
-            name = arguments["name"]
+            resource_name = arguments["name"]
             namespace = arguments.get("namespace", DEFAULT_NAMESPACE)
             
-            args = ["describe", resource_type, name]
+            args = ["describe", resource_type, resource_name]
             result = run_kubectl(args, namespace)
             
             return [types.TextContent(
                 type="text",
-                text=f"Description of {resource_type}/{name}:\n{result}"
+                text=f"Description of {resource_type}/{resource_name}:\n{result}"
             )]
         
         elif name == "kubectl_logs":

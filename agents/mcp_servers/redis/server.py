@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, cast
 from datetime import datetime, timedelta
 
 import redis.asyncio as redis
@@ -43,7 +43,7 @@ class RedisMCPServer:
     def __init__(self):
         self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
         self.port = int(os.getenv('MCP_SERVER_PORT', '4005'))
-        self.redis_client = None
+    self.redis_client: Any = None
         self.app = FastAPI(title="Redis MCP Server", version="1.0.0")
         self._setup_routes()
     
@@ -119,6 +119,7 @@ class RedisMCPServer:
         try:
             if not self.redis_client:
                 raise Exception("Redis client not initialized")
+            client: Any = self.redis_client
             
             result = await self._perform_operation(operation)
             
@@ -144,6 +145,7 @@ class RedisMCPServer:
         """Perform the actual Redis operation"""
         if not self.redis_client:
             raise Exception("Redis client not initialized")
+    client: Any = self.redis_client
             
         op = operation.operation.lower()
         key = operation.key
@@ -153,117 +155,182 @@ class RedisMCPServer:
         # Validate required parameters
         if key is None and op not in ['flushdb', 'scan']:
             raise ValueError("Key is required for this operation")
+        # For operations that require a key, treat it as non-optional
+        key_s: Optional[str] = key
         
         # Basic operations
         if op == "get":
-            if key is None:
+            if key_s is None:
                 raise ValueError("Key is required for get operation")
-            result = await self.redis_client.get(key)
-            return result.decode('utf-8') if result else None
+            result = await client.get(key_s)
+            if isinstance(result, (bytes, bytearray, memoryview)):
+                return result.decode('utf-8')
+            return result
         
         elif op == "set":
-            if key is None or value is None:
+            if key_s is None or value is None:
                 raise ValueError("Key and value are required for set operation")
             ex = params.get('ex')  # expiration in seconds
             nx = params.get('nx', False)  # only if not exists
             xx = params.get('xx', False)  # only if exists
-            return await self.redis_client.set(key, value, ex=ex, nx=nx, xx=xx)
+            return await client.set(key_s, value, ex=ex, nx=nx, xx=xx)
         
         elif op == "delete" or op == "del":
-            return await self.redis_client.delete(key)
+            if key_s is None:
+                raise ValueError("Key is required for delete operation")
+            return await client.delete(key_s)
         
         elif op == "exists":
-            return await self.redis_client.exists(key)
+            if key_s is None:
+                raise ValueError("Key is required for exists operation")
+            return await client.exists(key_s)
         
         elif op == "expire":
+            if key_s is None:
+                raise ValueError("Key is required for expire operation")
             seconds = params.get('seconds', 3600)
-            return await self.redis_client.expire(key, seconds)
+            return await client.expire(key_s, seconds)
         
         elif op == "ttl":
-            return await self.redis_client.ttl(key)
+            if key_s is None:
+                raise ValueError("Key is required for ttl operation")
+            return await client.ttl(key_s)
         
         # List operations
         elif op == "lpush":
-            return await self.redis_client.lpush(key, value)
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for lpush operation")
+            return await client.lpush(key_s, value)
         
         elif op == "rpush":
-            return await self.redis_client.rpush(key, value)
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for rpush operation")
+            return await client.rpush(key_s, value)
         
         elif op == "lpop":
-            result = await self.redis_client.lpop(key)
-            return result.decode('utf-8') if result else None
+            if key_s is None:
+                raise ValueError("Key is required for lpop operation")
+            result = await client.lpop(key_s)
+            if isinstance(result, (bytes, bytearray, memoryview)):
+                return result.decode('utf-8')
+            return result
         
         elif op == "rpop":
-            result = await self.redis_client.rpop(key)
-            return result.decode('utf-8') if result else None
+            if key_s is None:
+                raise ValueError("Key is required for rpop operation")
+            result = await client.rpop(key_s)
+            if isinstance(result, (bytes, bytearray, memoryview)):
+                return result.decode('utf-8')
+            return result
         
         elif op == "lrange":
+            if key_s is None:
+                raise ValueError("Key is required for lrange operation")
             start = params.get('start', 0)
             end = params.get('end', -1)
-            results = await self.redis_client.lrange(key, start, end)
-            return [r.decode('utf-8') for r in results]
+            results = await client.lrange(key_s, start, end)
+            return [r.decode('utf-8') if isinstance(r, (bytes, bytearray, memoryview)) else r for r in results]
         
         elif op == "llen":
-            return await self.redis_client.llen(key)
+            if key_s is None:
+                raise ValueError("Key is required for llen operation")
+            return await client.llen(key_s)
         
         # Hash operations
         elif op == "hset":
+            if key_s is None:
+                raise ValueError("Key is required for hset operation")
             field = params.get('field')
-            return await self.redis_client.hset(key, field, value)
+            if field is None or value is None:
+                raise ValueError("Field and value are required for hset operation")
+            return await client.hset(key_s, field, value)
         
         elif op == "hget":
+            if key_s is None:
+                raise ValueError("Key is required for hget operation")
             field = params.get('field')
-            result = await self.redis_client.hget(key, field)
-            return result.decode('utf-8') if result else None
+            if field is None:
+                raise ValueError("Field is required for hget operation")
+            result = await client.hget(key_s, field)
+            if isinstance(result, (bytes, bytearray, memoryview)):
+                return result.decode('utf-8')
+            return result
         
         elif op == "hgetall":
-            results = await self.redis_client.hgetall(key)
-            return {k.decode('utf-8'): v.decode('utf-8') for k, v in results.items()}
+            if key_s is None:
+                raise ValueError("Key is required for hgetall operation")
+            results = await client.hgetall(key_s)
+            return {(
+                k.decode('utf-8') if isinstance(k, (bytes, bytearray, memoryview)) else k
+            ): (
+                v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v
+            ) for k, v in results.items()}
         
         elif op == "hdel":
+            if key_s is None:
+                raise ValueError("Key is required for hdel operation")
             field = params.get('field')
-            return await self.redis_client.hdel(key, field)
+            if field is None:
+                raise ValueError("Field is required for hdel operation")
+            return await client.hdel(key_s, field)
         
         # Set operations
         elif op == "sadd":
-            return await self.redis_client.sadd(key, value)
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for sadd operation")
+            return await client.sadd(key_s, value)
         
         elif op == "srem":
-            return await self.redis_client.srem(key, value)
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for srem operation")
+            return await client.srem(key_s, value)
         
         elif op == "smembers":
-            results = await self.redis_client.smembers(key)
-            return [r.decode('utf-8') for r in results]
+            if key_s is None:
+                raise ValueError("Key is required for smembers operation")
+            results = await client.smembers(key_s)
+            return [r.decode('utf-8') if isinstance(r, (bytes, bytearray, memoryview)) else r for r in results]
         
         elif op == "sismember":
-            return await self.redis_client.sismember(key, value)
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for sismember operation")
+            return await client.sismember(key_s, value)
         
         # Sorted set operations
         elif op == "zadd":
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for zadd operation")
             score = params.get('score', 0)
-            return await self.redis_client.zadd(key, {value: score})
+            return await client.zadd(key_s, {value: score})
         
         elif op == "zrange":
+            if key_s is None:
+                raise ValueError("Key is required for zrange operation")
             start = params.get('start', 0)
             end = params.get('end', -1)
             withscores = params.get('withscores', False)
-            results = await self.redis_client.zrange(key, start, end, withscores=withscores)
+            results = await client.zrange(key_s, start, end, withscores=withscores)
             if withscores:
-                return [(r[0].decode('utf-8'), r[1]) for r in results]
-            return [r.decode('utf-8') for r in results]
+                return [(
+                    r[0].decode('utf-8') if isinstance(r[0], (bytes, bytearray, memoryview)) else r[0],
+                    r[1]
+                ) for r in results]
+            return [r.decode('utf-8') if isinstance(r, (bytes, bytearray, memoryview)) else r for r in results]
         
         elif op == "zrem":
-            return await self.redis_client.zrem(key, value)
+            if key_s is None or value is None:
+                raise ValueError("Key and value are required for zrem operation")
+            return await client.zrem(key_s, value)
         
         # Advanced operations
         elif op == "flushdb":
-            return await self.redis_client.flushdb()
+            return await client.flushdb()
         
         elif op == "scan":
             cursor = params.get('cursor', 0)
             match = params.get('match', '*')
             count = params.get('count', 10)
-            return await self.redis_client.scan(cursor=cursor, match=match, count=count)
+            return await client.scan(cursor=cursor, match=match, count=count)
         
         else:
             raise ValueError(f"Unsupported operation: {op}")
@@ -271,7 +338,10 @@ class RedisMCPServer:
     async def get_server_stats(self) -> RedisStats:
         """Get Redis server statistics"""
         try:
-            info = await self.redis_client.info()
+            if not self.redis_client:
+                raise Exception("Redis client not initialized")
+            client: Any = self.redis_client
+            info = await client.info()
             
             return RedisStats(
                 total_keys=info.get('db0', {}).get('keys', 0),
@@ -289,11 +359,14 @@ class RedisMCPServer:
     async def list_keys_with_pattern(self, pattern: str, limit: int) -> List[str]:
         """List keys matching pattern"""
         try:
+            if not self.redis_client:
+                raise Exception("Redis client not initialized")
+            client: Any = self.redis_client
             keys = []
             cursor = 0
             
             while len(keys) < limit:
-                cursor, batch_keys = await self.redis_client.scan(
+                cursor, batch_keys = await client.scan(
                     cursor=cursor, 
                     match=pattern, 
                     count=min(100, limit - len(keys))
@@ -323,7 +396,10 @@ class RedisMCPServer:
     async def analyze_memory_usage(self) -> Dict[str, Any]:
         """Analyze Redis memory usage patterns"""
         try:
-            info = await self.redis_client.info('memory')
+            if not self.redis_client:
+                raise Exception("Redis client not initialized")
+            client: Any = self.redis_client
+            info = await client.info('memory')
             
             # Get sample of keys for analysis
             sample_keys = await self.list_keys_with_pattern("*", 100)
@@ -331,13 +407,13 @@ class RedisMCPServer:
             
             for key in sample_keys[:20]:  # Analyze first 20 keys
                 try:
-                    memory_usage = await self.redis_client.memory_usage(key)
-                    key_type = await self.redis_client.type(key)
-                    ttl = await self.redis_client.ttl(key)
+                    memory_usage = await client.memory_usage(key)
+                    key_type = await client.type(key)
+                    ttl = await client.ttl(key)
                     
                     key_analysis[key] = {
                         'memory_bytes': memory_usage,
-                        'type': key_type.decode('utf-8') if key_type else 'unknown',
+                        'type': key_type.decode('utf-8') if isinstance(key_type, (bytes, bytearray, memoryview)) else (key_type or 'unknown'),
                         'ttl': ttl
                     }
                 except Exception:
@@ -362,6 +438,9 @@ class RedisMCPServer:
     async def create_data_backup(self, keys_pattern: str) -> Dict[str, Any]:
         """Create backup of Redis data"""
         try:
+            if not self.redis_client:
+                raise Exception("Redis client not initialized")
+            client: Any = self.redis_client
             backup_data = {
                 'timestamp': datetime.now().isoformat(),
                 'pattern': keys_pattern,
@@ -372,36 +451,40 @@ class RedisMCPServer:
             
             for key in keys:
                 try:
-                    key_type = await self.redis_client.type(key)
-                    key_type_str = key_type.decode('utf-8') if key_type else 'string'
-                    ttl = await self.redis_client.ttl(key)
+                    key_type = await client.type(key)
+                    key_type_str = key_type.decode('utf-8') if isinstance(key_type, (bytes, bytearray, memoryview)) else (key_type or 'string')
+                    ttl = await client.ttl(key)
                     
                     if key_type_str == 'string':
-                        value = await self.redis_client.get(key)
+                        value = await client.get(key)
                         backup_data['data'][key] = {
                             'type': 'string',
-                            'value': value.decode('utf-8') if value else None,
+                            'value': (value.decode('utf-8') if isinstance(value, (bytes, bytearray, memoryview)) else value),
                             'ttl': ttl
                         }
                     elif key_type_str == 'list':
-                        value = await self.redis_client.lrange(key, 0, -1)
+                        value = await client.lrange(key, 0, -1)
                         backup_data['data'][key] = {
                             'type': 'list',
-                            'value': [v.decode('utf-8') for v in value],
+                            'value': [v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v for v in value],
                             'ttl': ttl
                         }
                     elif key_type_str == 'hash':
-                        value = await self.redis_client.hgetall(key)
+                        value = await client.hgetall(key)
                         backup_data['data'][key] = {
                             'type': 'hash',
-                            'value': {k.decode('utf-8'): v.decode('utf-8') for k, v in value.items()},
+                            'value': {(
+                                k.decode('utf-8') if isinstance(k, (bytes, bytearray, memoryview)) else k
+                            ): (
+                                v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v
+                            ) for k, v in value.items()},
                             'ttl': ttl
                         }
                     elif key_type_str == 'set':
-                        value = await self.redis_client.smembers(key)
+                        value = await client.smembers(key)
                         backup_data['data'][key] = {
                             'type': 'set',
-                            'value': [v.decode('utf-8') for v in value],
+                            'value': [v.decode('utf-8') if isinstance(v, (bytes, bytearray, memoryview)) else v for v in value],
                             'ttl': ttl
                         }
                         
@@ -423,6 +506,9 @@ class RedisMCPServer:
     async def restore_data_backup(self, backup_data: dict) -> Dict[str, Any]:
         """Restore Redis data from backup"""
         try:
+            if not self.redis_client:
+                raise Exception("Redis client not initialized")
+            client: Any = self.redis_client
             restored_keys = 0
             failed_keys = []
             
@@ -435,23 +521,23 @@ class RedisMCPServer:
                     ttl = key_data.get('ttl', -1)
                     
                     if key_type == 'string':
-                        await self.redis_client.set(key, value)
+                        await client.set(key, value)
                     elif key_type == 'list':
-                        await self.redis_client.delete(key)  # Clear existing
+                        await client.delete(key)  # Clear existing
                         if value:
-                            await self.redis_client.rpush(key, *value)
+                            await client.rpush(key, *value)
                     elif key_type == 'hash':
-                        await self.redis_client.delete(key)  # Clear existing
+                        await client.delete(key)  # Clear existing
                         if value:
-                            await self.redis_client.hset(key, mapping=value)
+                            await client.hset(key, mapping=value)
                     elif key_type == 'set':
-                        await self.redis_client.delete(key)  # Clear existing
+                        await client.delete(key)  # Clear existing
                         if value:
-                            await self.redis_client.sadd(key, *value)
+                            await client.sadd(key, *value)
                     
                     # Set TTL if specified
                     if ttl > 0:
-                        await self.redis_client.expire(key, ttl)
+                        await client.expire(key, ttl)
                     
                     restored_keys += 1
                     

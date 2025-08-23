@@ -5,7 +5,7 @@ Unified interface for OpenAI, Anthropic, Google, and Ollama with configurable fa
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, cast
 from enum import Enum
 
 import openai
@@ -77,12 +77,14 @@ class OpenAIProvider(BaseLLMProvider):
 
 class AnthropicProvider(BaseLLMProvider):
     def __init__(self, api_key: str, model: str = "claude-3-haiku-20240307"):
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        # Use Any to avoid Pylance attribute inference issues across anthropic versions
+        self.client = cast(Any, anthropic.AsyncAnthropic(api_key=api_key))
         self.model = model
     
     async def generate(self, prompt: str, **kwargs) -> LLMResponse:
         try:
-            response = await self.client.messages.create(
+            # getattr to be resilient if the SDK surface changes while keeping runtime behavior
+            response = await getattr(self.client, "messages").create(
                 model=self.model,
                 max_tokens=kwargs.get("max_tokens", 1000),
                 messages=[{"role": "user", "content": prompt}]
@@ -101,7 +103,7 @@ class AnthropicProvider(BaseLLMProvider):
     async def health_check(self) -> bool:
         try:
             # Anthropic doesn't have a direct health check, so we make a minimal request
-            await self.client.messages.create(
+            await getattr(self.client, "messages").create(
                 model=self.model,
                 max_tokens=1,
                 messages=[{"role": "user", "content": "test"}]
@@ -162,13 +164,31 @@ class OllamaProvider(BaseLLMProvider):
                         ollama_kwargs['options'] = {}
                     ollama_kwargs['options']['temperature'] = value
             
-            response = await self.client.generate(
-                model=self.model,
-                prompt=prompt,
-                **ollama_kwargs
-            )
+            stream = bool(ollama_kwargs.get('stream'))
+            if stream:
+                # Collect streamed chunks into a single string
+                content_parts: List[str] = []
+                gen_any: Any = await self.client.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    **ollama_kwargs
+                )
+                async for chunk in gen_any:
+                    # Each chunk is a dict with optional 'response'
+                    text = chunk.get("response") or ""
+                    if text:
+                        content_parts.append(text)
+                content = "".join(content_parts)
+            else:
+                resp_any: Any = await self.client.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    **ollama_kwargs
+                )
+                # Be robust to SDK typing; treat as mapping
+                content = cast(Dict[str, Any], resp_any).get("response", "")
             return LLMResponse(
-                content=response["response"],
+                content=content,
                 provider=LLMProvider.OLLAMA,
                 model=self.model
             )
