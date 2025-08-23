@@ -11,9 +11,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 
-from ..shared.config import config
-from ..shared.llm_providers import LLMProviderManager, LLMProvider
-from ..shared.rag_system import RAGSystem, Document, SearchResult
+from shared.config import config
+from shared.llm_providers import LLMProviderManager, LLMProvider
+from shared.rag_system import RAGSystem, Document, SearchResult
 
 logger = logging.getLogger(__name__)
 

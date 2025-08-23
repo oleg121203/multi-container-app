@@ -144,10 +144,28 @@ class OllamaProvider(BaseLLMProvider):
     
     async def generate(self, prompt: str, **kwargs) -> LLMResponse:
         try:
+            # Filter out unsupported kwargs for Ollama
+            ollama_kwargs = {}
+            supported_params = {'system', 'template', 'context', 'stream', 'raw', 'format', 'options'}
+            
+            for key, value in kwargs.items():
+                if key in supported_params:
+                    ollama_kwargs[key] = value
+                elif key == 'max_tokens':
+                    # Convert max_tokens to Ollama's num_predict option
+                    if 'options' not in ollama_kwargs:
+                        ollama_kwargs['options'] = {}
+                    ollama_kwargs['options']['num_predict'] = value
+                elif key == 'temperature':
+                    # Convert temperature to Ollama's temperature option
+                    if 'options' not in ollama_kwargs:
+                        ollama_kwargs['options'] = {}
+                    ollama_kwargs['options']['temperature'] = value
+            
             response = await self.client.generate(
                 model=self.model,
                 prompt=prompt,
-                **kwargs
+                **ollama_kwargs
             )
             return LLMResponse(
                 content=response["response"],

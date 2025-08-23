@@ -14,23 +14,50 @@ import json
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
-import autogen
-from autogen import AssistantAgent, UserProxyAgent
 
-from ..shared.config import config
-from ..shared.llm_providers import LLMProviderManager, LLMProvider, OllamaProvider
-from ..shared.linear_tool import LinearClient, LinearIssue, IssuePriority
+# AutoGen import with fallback for local development
+try:
+    import autogen
+    from autogen import AssistantAgent, UserProxyAgent
+    AUTOGEN_AVAILABLE = True
+except ImportError:
+    try:
+        # Try pyautogen for newer versions
+        import pyautogen as autogen
+        from pyautogen import AssistantAgent, UserProxyAgent
+        AUTOGEN_AVAILABLE = True
+    except ImportError:
+        # Fallback for local development without autogen
+        print("Warning: AutoGen not available - some features will be disabled")
+        AUTOGEN_AVAILABLE = False
+        autogen = None
+        
+        # Create mock classes for type checking
+        class MockAssistantAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+                
+        class MockUserProxyAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+                
+        AssistantAgent = MockAssistantAgent
+        UserProxyAgent = MockUserProxyAgent
+
+from shared.config import config
+from shared.llm_providers import LLMProviderManager, LLMProvider, OllamaProvider
+from shared.linear_tool import LinearClient, LinearIssue, IssuePriority
+
+logger = logging.getLogger(__name__)
 
 # Phase 3: Import MCP Hub integration
 try:
-    from ..mcp_hub.registry import mcp_registry
-    from ..mcp_hub.client import mcp_client
+    from mcp_hub.registry import mcp_registry
+    from mcp_hub.client import mcp_client
     MCP_AVAILABLE = True
 except ImportError:
     logger.warning("MCP Hub not available - MCP functionality disabled")
     MCP_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
 
 
 class TaskRequest(BaseModel):
@@ -95,6 +122,12 @@ class LLM2Agent:
     
     def _setup_autogen(self):
         """Setup AutoGen agents for orchestration"""
+        
+        if not AUTOGEN_AVAILABLE:
+            logger.warning("AutoGen not available - disabling multi-agent orchestration")
+            self.assistant_agent = None
+            self.user_proxy = None
+            return
         
         # Configure LLM for AutoGen to use Ollama
         llm_config = {
@@ -211,6 +244,10 @@ class LLM2Agent:
                 action = action_request.get('action')
                 args = action_request.get('args', {})
                 server_preference = action_request.get('server_preference')
+                
+                # Validate required parameters
+                if not action or not isinstance(action, str):
+                    raise HTTPException(status_code=400, detail="Action parameter is required and must be a string")
                 
                 result = await mcp_client.execute_action(
                     action=action,

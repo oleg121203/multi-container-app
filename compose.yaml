@@ -34,33 +34,28 @@ services:
     ports:
       - 27017:27017
 
-  # MCP: Text-to-Speech server (blacktop/mcp-tts) + local Coqui TTS backend
+  # MCP: Text-to-Speech server (use synesthesiam/coqui-tts instead)
   mcp-tts:
-    image: ghcr.io/blacktop/mcp-tts:latest
+    image: synesthesiam/coqui-tts:latest
     ports:
-      - "4004:4004"
+      - "4004:5002"
     environment:
-      MCP_PORT: "4004"
-      ATLAS_TTS_PROVIDERS: "say_tts,openai_tts,elevenlabs_tts,google_tts,coqui_tts"
-      COQUI_TTS_BASE_URL: "http://coqui-tts:5002"
-      # OPENAI_API_KEY: ${OPENAI_API_KEY}
-      # ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
-      # GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY}
-    depends_on:
-      - coqui-tts
+      TTS_MODEL: "tts_models/multilingual/multi-dataset/xtts_v2"
+      TTS_LANGUAGE: "uk"
+    command: ["python3", "-m", "TTS.server.server", "--model_name", "tts_models/multilingual/multi-dataset/xtts_v2"]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4004/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:5002"]
       interval: 15s
       timeout: 5s
       retries: 5
 
   coqui-tts:
-    image: ghcr.io/coqui-ai/tts-cpu:latest
+    image: synesthesiam/coqui-tts:latest
     ports:
       - "5002:5002"
     environment:
       COQUI_TTS_MODEL: ${COQUI_TTS_MODEL:-tts_models/multilingual/multi-dataset/xtts_v2}
-    command: ["python3", "TTS/server/server.py", "--model_name", "${COQUI_TTS_MODEL:-tts_models/multilingual/multi-dataset/xtts_v2}"]
+    command: ["python3", "-m", "TTS.server.server", "--model_name", "${COQUI_TTS_MODEL:-tts_models/multilingual/multi-dataset/xtts_v2}"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5002"]
       interval: 20s
@@ -97,21 +92,21 @@ services:
       timeout: 5s
       retries: 3
 
-  # Phase 2: Ollama for LLM2 (CFG-02)
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      OLLAMA_HOST: 0.0.0.0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+  # Phase 2: Ollama (using local host installation)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   environment:
+  #     OLLAMA_HOST: 0.0.0.0
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
 
   # Phase 2: LLM1 Agent with RAG
   llm1-agent:
@@ -143,22 +138,32 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - OLLAMA_HOST=ollama
+      - OLLAMA_HOST=host.docker.internal
+      - OLLAMA_PORT=11434
       - LINEAR_API_KEY=${LINEAR_API_KEY}
       - ATLAS_LLM2_ALLOW_FALLBACK=${ATLAS_LLM2_ALLOW_FALLBACK:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      # Phase 3: MCP Hub configuration
-      - ATLAS_MCP_SERVERS=${ATLAS_MCP_SERVERS:-playwright,automation,tts}
+      # Phase 3: MCP Hub configuration - Extended
+      - ATLAS_MCP_SERVERS=${ATLAS_MCP_SERVERS:-playwright,automation,tts,redis,mac-automation,mac-gui,file-manager}
       - ATLAS_MCP_PLAYWRIGHT_URL=http://mcp-playwright:4001
       - ATLAS_MCP_AUTOMATION_URL=http://mcp-automation:4002
       - ATLAS_MCP_TTS_URL=http://mcp-tts:4004
       - ATLAS_MCP_STT_URL=http://mcp-stt:8080
+      - ATLAS_MCP_REDIS_URL=http://mcp-redis:4005
+      - ATLAS_MCP_FILE_MANAGER_URL=http://mcp-file-manager:4006
+      - ATLAS_MCP_MAC_AUTOMATION_URL=http://mcp-macos-automation:4007
+      - ATLAS_MCP_MAC_NATIVE_URL=http://mcp-macos-native:4008
+      - ATLAS_MCP_KUBERNETES_URL=http://mcp-kubernetes:4009
     depends_on:
-      - ollama
-      - mcp-playwright
       - mcp-tts
+      - mcp-redis
+      - mcp-file-manager
+      - mcp-macos-automation
+      - mcp-kubernetes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -258,8 +263,100 @@ services:
       timeout: 10s
       retries: 3
 
+  # ==================== NEW MCP SERVICES ====================
+  
+  # Official Redis MCP Server
+  mcp-redis:
+    image: ghcr.io/redis/mcp-redis:latest
+    ports:
+      - "4005:4005"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MCP_REDIS_PORT=4005
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # File Manager MCP Server
+  mcp-file-manager:
+    build:
+      context: ./agents/mcp_servers/file_manager
+    ports:
+      - "4006:4006"
+    environment:
+      - MCP_FILE_MANAGER_PORT=4006
+      - ALLOWED_PATHS=/workspace,/tmp
+      - MAX_FILE_SIZE=10MB
+    volumes:
+      - ./data:/workspace:rw
+      - /tmp:/tmp:rw
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # macOS Automation MCP Server (PyAutoGUI-based)
+  mcp-macos-automation:
+    build:
+      context: ./agents/mcp_servers/macos_automation
+    ports:
+      - "4007:4007"
+    environment:
+      - MCP_MACOS_PORT=4007
+      - AUTOMATION_MODE=safe
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # macOS Native Automation MCP Server (AppleScript-based)
+  mcp-macos-native:
+    build:
+      context: ./agents/mcp_servers/macos_native
+    ports:
+      - "4008:4008"
+    environment:
+      - MCP_MACOS_NATIVE_PORT=4008
+      - NATIVE_AUTOMATION=true
+    platform: darwin/arm64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kubernetes Management MCP Server
+  mcp-kubernetes:
+    build:
+      context: ./agents/mcp_servers/kubernetes
+    ports:
+      - "4009:4009"
+    environment:
+      - MCP_K8S_PORT=4009
+      - KUBECONFIG=/kubeconfig/config
+    volumes:
+      - ~/.kube:/kubeconfig:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4009/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   qdrant_data:
   redis_data:
-  ollama_data:
+  # ollama_data: # Not needed - using local Ollama installation
   #database:
