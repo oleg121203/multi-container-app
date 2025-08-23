@@ -87,6 +87,10 @@ class VoiceRequest(BaseModel):
     voice: str = "default"
     agent_id: str = "atlas"
 
+class RunTaskRequest(BaseModel):
+    description: str
+    requester_id: str | None = None
+
 # WebSocket Connection Manager
 class ConnectionManager:
     def __init__(self):
@@ -466,14 +470,48 @@ async def get_metrics():
         # Fallback to basic metrics
         return {
             "timestamp": time.time(),
+            "uptime_seconds": time.time() - startup_time,
             "active_agents": 3,
             "teams_formed": 15,
             "tasks_completed": 42,
-            "uptime_seconds": time.time() - startup_time,
             "request_count": request_count,
-            "error_rate_percent": 0.02,
-            "active_websocket_connections": len(manager.active_connections)
+            "error_count": error_count,
+            "error_rate_percent": (error_count / max(request_count, 1)) * 100,
+            "active_websocket_connections": len(manager.active_connections),
+            "system_metrics": {
+                "cpu_percent": 0.0,
+                "memory_percent": 0.0,
+                "memory_used_mb": 0.0,
+                "memory_total_mb": 0.0,
+                "disk_percent": 0.0,
+                "disk_used_gb": 0.0,
+                "disk_total_gb": 0.0
+            },
+            "network_metrics": {}
         }
+
+@app.post("/api/tasks/run")
+async def run_task(request: RunTaskRequest):
+    """Forward a task to LLM2 orchestrator for autonomous execution"""
+    llm2_url = os.environ.get("ATLAS_LLM2_URL", "http://127.0.0.1:8002")
+    payload = {
+        "description": request.description,
+        "requester_id": request.requester_id or "web-ui"
+    }
+    timeout = aiohttp.ClientTimeout(total=30)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(f"{llm2_url}/process_task", json=payload) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise HTTPException(status_code=resp.status, detail=text)
+                data = await resp.json()
+                return {"status": "ok", "llm2": data}
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="LLM2 orchestrator timeout")
+    except Exception as e:
+        logger.error(f"Failed to forward task to LLM2: {e}")
+        raise HTTPException(status_code=502, detail="LLM2 orchestrator error")
 
 @app.post("/api/chat")
 async def chat_endpoint(message: ChatMessage):

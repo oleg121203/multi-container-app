@@ -95,6 +95,16 @@ fi
 kubectl apply -f infra/k8s/manual/10-atlas-agents.yaml
 print_success "ATLAS agents deployed"
 
+# Deploy web API
+print_header "Deploying Web API"
+kubectl apply -f infra/k8s/manual/12-web-api.yaml
+print_success "Web API deployed"
+
+# Deploy MCP services
+print_header "Deploying MCP Services"
+kubectl apply -f infra/k8s/manual/13-mcp-services.yaml
+print_success "MCP services deployed (Playwright, File Manager, macOS Automation, Kubernetes)"
+
 # Wait for pods to be ready
 print_header "Waiting for Pods to Start"
 echo "Waiting for pods in atlas namespace to be ready..."
@@ -123,12 +133,25 @@ echo "📈 Prometheus:"
 echo "   kubectl port-forward -n atlas svc/prometheus 9090:9090"
 echo "   Open: http://localhost:9090"
 echo ""
+echo "🌐 Web API:"
+echo "   kubectl port-forward -n atlas svc/web-api 8000:8000"
+echo "   Open: http://localhost:8000  (health: /health, docs: /docs, metrics: /metrics)"
+echo ""
 echo "📱 Todo App:"
 echo "   kubectl port-forward -n atlas svc/todo-app 3001:3000"
 echo "   Open: http://localhost:3001"
 echo ""
-echo "🔊 MCP TTS:"
-echo "   kubectl port-forward -n atlas svc/mcp-tts 4004:4004"
+echo "🔊 MCP Services:"
+echo "   TTS:        kubectl port-forward -n atlas svc/mcp-tts 4004:4004"
+echo "   Playwright: kubectl port-forward -n atlas svc/mcp-playwright 4001:4001"
+echo "   File Mgr:   kubectl port-forward -n atlas svc/mcp-file-manager 4006:4006"
+echo "   macOS Auto: kubectl port-forward -n atlas svc/mcp-macos-automation 4007:4007"
+echo "   Kubernetes: kubectl port-forward -n atlas svc/mcp-kubernetes 4009:4009"
+echo ""
+echo "🤖 ATLAS Agents:"
+echo "   LLM1 (RAG): kubectl port-forward -n atlas svc/llm1 8001:8001"
+echo "   LLM2 (Orchestrator + MCP Hub): kubectl port-forward -n atlas svc/llm2 8002:8002"
+echo "   LLM3 (Security): kubectl port-forward -n atlas svc/llm3 8003:8003"
 echo ""
 
 print_header "Next Steps"

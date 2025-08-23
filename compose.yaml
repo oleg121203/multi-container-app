@@ -1,13 +1,4 @@
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Docker compose reference guide at
-# https://docs.docker.com/compose/compose-file/
-
-# Here the instructions define your application as two services called "todo-app" and “todo-database”
-# The service “todo-app” is built from the Dockerfile in the /app directory,
-# and the service “todo-database” uses the official MongoDB image 
-# from Docker Hub - https://hub.docker.com/_/mongo. 
-# You can add other services your application may depend on here.
-
+version: '3.9'
 services:
   todo-app:
     build:
@@ -146,19 +137,17 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       # Phase 3: MCP Hub configuration - Extended
-      - ATLAS_MCP_SERVERS=${ATLAS_MCP_SERVERS:-playwright,automation,tts,redis,mac-automation,mac-gui,file-manager}
+      - ATLAS_MCP_SERVERS=${ATLAS_MCP_SERVERS:-playwright,tts,mac-automation,file-manager,kubernetes}
       - ATLAS_MCP_PLAYWRIGHT_URL=http://mcp-playwright:4001
-      - ATLAS_MCP_AUTOMATION_URL=http://mcp-automation:4002
+      - ATLAS_MCP_AUTOMATION_URL=http://mcp-macos-automation:4007
       - ATLAS_MCP_TTS_URL=http://mcp-tts:4004
       - ATLAS_MCP_STT_URL=http://mcp-stt:8080
-      - ATLAS_MCP_REDIS_URL=http://mcp-redis:4005
       - ATLAS_MCP_FILE_MANAGER_URL=http://mcp-file-manager:4006
       - ATLAS_MCP_MAC_AUTOMATION_URL=http://mcp-macos-automation:4007
       - ATLAS_MCP_MAC_NATIVE_URL=http://mcp-macos-native:4008
       - ATLAS_MCP_KUBERNETES_URL=http://mcp-kubernetes:4009
     depends_on:
       - mcp-tts
-      - mcp-redis
       - mcp-file-manager
       - mcp-macos-automation
       - mcp-kubernetes
@@ -218,6 +207,8 @@ services:
   # Phase 3: MCP STT (Speech-to-Text) Server
   mcp-stt:
     image: ghcr.io/openai/whisper:latest
+    profiles:
+      - optional
     ports:
       - "8080:8080"
     environment:
@@ -233,6 +224,8 @@ services:
   # Phase 3: Falco Security Monitoring
   falco:
     image: falcosecurity/falco-no-driver:latest
+    profiles:
+      - optional
     privileged: true
     volumes:
       - /var/run/docker.sock:/host/var/run/docker.sock:ro
@@ -268,6 +261,8 @@ services:
   # Official Redis MCP Server
   mcp-redis:
     image: ghcr.io/redis/mcp-redis:latest
+    profiles:
+      - optional
     ports:
       - "4005:4005"
     environment:
@@ -356,6 +351,34 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # ==================== MONITORING: Prometheus & Grafana ====================
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3001:3000" # 3000 занят todo-app, поэтому 3001 на хосте
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./infra/monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/monitoring/grafana/initial-dashboard.json:/var/lib/grafana/dashboards/atlas-initial.json:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
 
 volumes:
   qdrant_data:

@@ -1,3 +1,60 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.tox/
+*.egg-info/
+*.dist-info/
+dist/
+build/
+
+# Virtual envs
+venv/
+.venv/
+.env
+.env.*
+
+# Node/Frontend
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-error.log*
+.next/
+.turbo/
+coverage/
+
+# Logs & reports
+logs/
+*.log
+*.pid
+playwright-report/
+test-results/
+test-execution-results.log
+validation-results.log
+e2e-test-results-*.json
+
+# App specifics
+web/server.log
+
+# Data (keep dirs, ignore contents)
+data/audio/*
+!data/audio/.gitkeep
+data/screenshots/*
+!data/screenshots/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+
+# Docker
+.docker/
 # Dependencies
 app/node_modules
 node_modules/
@@ -43,6 +100,11 @@ kubeval-linux-amd64.tar.gz
 
 # Kubernetes generated files
 infra/k8s/kompose-generated/
+infra/k8s/schemas/
+
+# Monitoring generated/configuration (do not commit local state)
+infra/monitoring/grafana/provisioning/
+infra/monitoring/prometheus/
 
 # Test output
 coverage/

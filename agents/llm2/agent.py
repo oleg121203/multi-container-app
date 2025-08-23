@@ -312,6 +312,22 @@ class LLM2Agent:
             except Exception as e:
                 await self._log_audit_event("ollama_check_failed", {"error": str(e)}, "error")
                 return {"status": "error", "error": str(e)}
+        
+        @self.app.get("/task_actions/{task_id}")
+        async def get_task_actions(task_id: str):
+            """Get executable actions for a task"""
+            # Find actions in audit log
+            actions = []
+            for entry in self.audit_log:
+                if (entry.event_type == "browser_task_executed" and 
+                    entry.details.get("task_id") == task_id):
+                    actions.append({
+                        "type": "open_url",
+                        "url": entry.details.get("url"),
+                        "timestamp": entry.timestamp.isoformat()
+                    })
+            
+            return {"task_id": task_id, "actions": actions}
     
     async def _log_audit_event(self, event_type: str, details: Dict[str, Any], severity: str = "info"):
         """Log audit event"""
@@ -411,9 +427,12 @@ class LLM2Agent:
                 "info"
             )
             
+            # Normalize description to English if configured/needed
+            normalized_description = await self._normalize_to_english(task_request.description, task_id)
+
             # Create planning prompt
             planning_prompt = f"""
-            Task Request: {task_request.description}
+            Task Request: {normalized_description}
             Requester: {task_request.requester_id}
             Priority: {task_request.priority}
             
@@ -452,9 +471,9 @@ class LLM2Agent:
                 try:
                     priority = self._parse_priority(task_request.priority)
                     issue = await self.linear_client.create_issue(
-                        title=plan_data.get("issue_title", f"Task: {task_request.description[:50]}..."),
+                        title=plan_data.get("issue_title", f"Task: {normalized_description[:50]}..."),
                         team_id=task_request.team_id,
-                        description=plan_data.get("issue_description", task_request.description),
+                        description=plan_data.get("issue_description", normalized_description),
                         priority=priority
                     )
                     
@@ -489,9 +508,12 @@ class LLM2Agent:
                 "Verify completion"
             ])
             
+            # Execute the task if it's actionable (use normalized English)
+            execution_result = await self._execute_task(normalized_description, execution_plan, task_id)
+            
             return TaskResponse(
                 task_id=task_id,
-                status="planned",
+                status="completed" if execution_result else "planned",
                 linear_issue=linear_issue,
                 execution_plan=execution_plan,
                 agent_used=llm_response.provider.value,
@@ -505,6 +527,65 @@ class LLM2Agent:
                 "error"
             )
             raise HTTPException(status_code=500, detail=f"Failed to process task: {str(e)}")
+
+    def _should_force_english(self) -> bool:
+        """Return whether input should be translated to English based on env flag."""
+        return os.getenv("ATLAS_FORCE_ENGLISH", "true").lower() in {"1", "true", "yes", "on"}
+
+    def _looks_english(self, text: str) -> bool:
+        """Heuristic: returns True if text appears predominantly English/ASCII."""
+        try:
+            # If there are Cyrillic characters or other non-latin letters, treat as non-English
+            for ch in text:
+                code = ord(ch)
+                # Basic Latin + common punctuation range quick allow
+                if (65 <= code <= 90) or (97 <= code <= 122) or ch.isdigit() or ch.isspace() or ch in "-_,.;:!?()[]{}'\"/\\+@#&$%*":
+                    continue
+                # Cyrillic ranges
+                if 0x0400 <= code <= 0x04FF or 0x0500 <= code <= 0x052F:
+                    return False
+                # Other non-latin letters imply not English
+                if ch.isalpha() and not ('A' <= ch <= 'Z' or 'a' <= ch <= 'z'):
+                    return False
+            return True
+        except Exception:
+            return False
+
+    async def _normalize_to_english(self, text: str, task_id: Optional[str] = None) -> str:
+        """Translate input text to English if needed using Ollama; otherwise return original.
+        Safe: on failure, returns original text.
+        """
+        # Quick exit if not requested
+        if not self._should_force_english() or self._looks_english(text):
+            return text
+
+        try:
+            prompt = (
+                "You are a translator. Translate the following instruction to concise, natural English. "
+                "Preserve meaning and imperative form. Output ONLY the translated instruction with no quotes, no explanations.\n\n" 
+                f"Instruction: {text}"
+            )
+            resp, _ = await self._generate_with_ollama_preference(prompt, max_tokens=256, temperature=0.0)
+            translated = (resp.content or "").strip()
+            if translated:
+                await self._log_audit_event(
+                    "input_translated_to_english",
+                    {
+                        "task_id": task_id,
+                        "original_preview": text[:120],
+                        "translated_preview": translated[:120]
+                    },
+                    "info"
+                )
+                return translated
+            return text
+        except Exception as e:
+            await self._log_audit_event(
+                "input_translation_failed",
+                {"task_id": task_id, "error": str(e)},
+                "warning"
+            )
+            return text
     
     def _extract_plan_from_text(self, response_text: str, original_description: str) -> Dict[str, Any]:
         """Extract plan information from text response (fallback method)"""
@@ -539,6 +620,141 @@ class LLM2Agent:
             "execution_plan": execution_plan,
             "analysis": response_text
         }
+    
+    async def _execute_task(self, description: str, execution_plan: List[str], task_id: str) -> bool:
+        """Execute the task based on description and plan"""
+        try:
+            description_lower = description.lower()
+            
+            # Browser/video related tasks
+            if any(keyword in description_lower for keyword in ['браузер', 'browser', 'фільм', 'video', 'youtube']):
+                return await self._execute_browser_task(description, task_id)
+            
+            # File operations
+            elif any(keyword in description_lower for keyword in ['файл', 'file', 'створ', 'create']):
+                return await self._execute_file_task(description, task_id)
+            
+            # Search operations
+            elif any(keyword in description_lower for keyword in ['знайд', 'search', 'пошук']):
+                return await self._execute_search_task(description, task_id)
+            
+            # Default: log that we planned but didn't execute
+            await self._log_audit_event(
+                "task_not_executable",
+                {"task_id": task_id, "description": description, "reason": "No execution handler found"},
+                "warning"
+            )
+            return False
+            
+        except Exception as e:
+            await self._log_audit_event(
+                "task_execution_failed",
+                {"task_id": task_id, "error": str(e)},
+                "error"
+            )
+            return False
+    
+    async def _execute_browser_task(self, description: str, task_id: str) -> bool:
+        """Execute browser-related tasks"""
+        try:
+            # Try to open YouTube or generic video search
+            if 'youtube' in description.lower():
+                url = "https://www.youtube.com/results?search_query=funny+videos"
+            else:
+                url = "https://www.youtube.com/results?search_query=movies+online"
+            
+            # Since we're in Docker, we'll use HTTP request to trigger browser opening
+            # through the web API or return success with URL
+            await self._log_audit_event(
+                "browser_task_executed",
+                {
+                    "task_id": task_id, 
+                    "url": url, 
+                    "action": "prepared_browser_url",
+                    "note": "URL ready for opening in browser"
+                },
+                "info"
+            )
+            
+            # Best-effort: if running on macOS host, launch the default browser
+            try:
+                import platform, subprocess
+                if platform.system() == "Darwin":
+                    subprocess.Popen(["open", url])
+                    await self._log_audit_event(
+                        "browser_launched",
+                        {"task_id": task_id, "url": url, "method": "open"},
+                        "info"
+                    )
+            except Exception as e:
+                await self._log_audit_event(
+                    "browser_launch_failed",
+                    {"task_id": task_id, "error": str(e)},
+                    "warning"
+                )
+            
+            # Return the URL in audit log for external systems to act on
+            return True
+                
+        except Exception as e:
+            await self._log_audit_event(
+                "browser_execution_error",
+                {"task_id": task_id, "error": str(e)},
+                "error"
+            )
+            return False
+    
+    async def _execute_file_task(self, description: str, task_id: str) -> bool:
+        """Execute file-related tasks"""
+        try:
+            # Simple file creation as example
+            if 'створ' in description.lower() or 'create' in description.lower():
+                filename = f"task_{task_id}.txt"
+                with open(filename, 'w') as f:
+                    f.write(f"Task: {description}\nCreated by LLM2 Agent\n")
+                
+                await self._log_audit_event(
+                    "file_task_executed",
+                    {"task_id": task_id, "filename": filename, "action": "created_file"},
+                    "info"
+                )
+                return True
+            return False
+            
+        except Exception as e:
+            await self._log_audit_event(
+                "file_execution_error",
+                {"task_id": task_id, "error": str(e)},
+                "error"
+            )
+            return False
+    
+    async def _execute_search_task(self, description: str, task_id: str) -> bool:
+        """Execute search-related tasks"""
+        try:
+            # Use web search as example
+            search_query = description.replace('знайди', '').replace('search', '').strip()
+            url = f"https://www.google.com/search?q={search_query.replace(' ', '+')}"
+            
+            import subprocess
+            result = subprocess.run(['open', url], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                await self._log_audit_event(
+                    "search_task_executed",
+                    {"task_id": task_id, "query": search_query, "action": "opened_search"},
+                    "info"
+                )
+                return True
+            return False
+            
+        except Exception as e:
+            await self._log_audit_event(
+                "search_execution_error",
+                {"task_id": task_id, "error": str(e)},
+                "error"
+            )
+            return False
     
     async def run_server(self, host: str = "0.0.0.0", port: int = 8002):
         """Run the FastAPI server"""

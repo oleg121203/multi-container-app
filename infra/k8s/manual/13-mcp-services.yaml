@@ -1,0 +1,442 @@
+---
+# Playwright MCP Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-playwright
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-playwright
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-playwright
+  template:
+    metadata:
+      labels:
+        app: mcp-playwright
+        app.kubernetes.io/name: mcp-playwright
+        app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: atlas-system
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4001"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: mcp-playwright
+        # NOTE: заміни образ на власний реєстр перед деплоєм
+        image: atlas/mcp-playwright:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4001
+          name: mcp
+        env:
+        - name: MCP_PORT
+          value: "4001"
+        - name: PLAYWRIGHT_MAX_PAGES
+          value: "5"
+        - name: PLAYWRIGHT_PAGE_TIMEOUT
+          value: "30000"
+        - name: PLAYWRIGHT_ALLOWED_DOMAINS
+          value: ""
+        securityContext:
+          capabilities:
+            add:
+            - SYS_ADMIN  # Required for Chrome sandbox
+            drop:
+            - ALL
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4001
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4001
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 2
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-playwright
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-playwright
+    app.kubernetes.io/component: mcp-server
+spec:
+  ports:
+  - port: 4001
+    targetPort: 4001
+    protocol: TCP
+    name: mcp
+  selector:
+    app: mcp-playwright
+
+---
+# File Manager MCP Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-file-manager
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-file-manager
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-file-manager
+  template:
+    metadata:
+      labels:
+        app: mcp-file-manager
+        app.kubernetes.io/name: mcp-file-manager
+        app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: atlas-system
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4006"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: mcp-file-manager
+        # NOTE: заміни образ на власний реєстр перед деплоєм
+        image: atlas/mcp-file-manager:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4006
+          name: mcp
+        env:
+        - name: MCP_FILE_MANAGER_PORT
+          value: "4006"
+        - name: ALLOWED_PATHS
+          value: "/workspace,/tmp"
+        - name: MAX_FILE_SIZE
+          value: "10MB"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        - name: temp-storage
+          mountPath: /tmp
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4006
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4006
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 2
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "512Mi"
+      volumes:
+      - name: workspace
+        persistentVolumeClaim:
+          claimName: mcp-file-manager-pvc
+      - name: temp-storage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-file-manager
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-file-manager
+    app.kubernetes.io/component: mcp-server
+spec:
+  ports:
+  - port: 4006
+    targetPort: 4006
+    protocol: TCP
+    name: mcp
+  selector:
+    app: mcp-file-manager
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mcp-file-manager-pvc
+  namespace: atlas
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# macOS Automation MCP Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-macos-automation
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-macos-automation
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-macos-automation
+  template:
+    metadata:
+      labels:
+        app: mcp-macos-automation
+        app.kubernetes.io/name: mcp-macos-automation
+        app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: atlas-system
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4007"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: mcp-macos-automation
+        # NOTE: заміни образ на власний реєстр перед деплоєм
+        image: atlas/mcp-macos-automation:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4007
+          name: mcp
+        env:
+        - name: MCP_MACOS_PORT
+          value: "4007"
+        - name: AUTOMATION_MODE
+          value: "safe"
+        - name: DISPLAY
+          value: ":99"
+        - name: CLICK_DELAY
+          value: "0.1"
+        - name: MOVE_DURATION
+          value: "0.5"
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4007
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4007
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 2
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-macos-automation
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-macos-automation
+    app.kubernetes.io/component: mcp-server
+spec:
+  ports:
+  - port: 4007
+    targetPort: 4007
+    protocol: TCP
+    name: mcp
+  selector:
+    app: mcp-macos-automation
+
+---
+# Kubernetes MCP Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-kubernetes
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-kubernetes
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: atlas-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-kubernetes
+  template:
+    metadata:
+      labels:
+        app: mcp-kubernetes
+        app.kubernetes.io/name: mcp-kubernetes
+        app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: atlas-system
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4009"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: mcp-kubernetes
+      containers:
+      - name: mcp-kubernetes
+        # NOTE: заміни образ на власний реєстр перед деплоєм
+        image: atlas/mcp-kubernetes:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4009
+          name: mcp
+        env:
+        - name: MCP_K8S_PORT
+          value: "4009"
+        - name: K8S_NAMESPACE
+          value: "atlas"
+        - name: KUBECONFIG
+          value: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4009
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4009
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 2
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-kubernetes
+  namespace: atlas
+  labels:
+    app.kubernetes.io/name: mcp-kubernetes
+    app.kubernetes.io/component: mcp-server
+spec:
+  ports:
+  - port: 4009
+    targetPort: 4009
+    protocol: TCP
+    name: mcp
+  selector:
+    app: mcp-kubernetes
+
+---
+# ServiceAccount for Kubernetes MCP Server
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-kubernetes
+  namespace: atlas
+
+---
+# ClusterRole for Kubernetes MCP Server
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-kubernetes
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+
+---
+# ClusterRoleBinding for Kubernetes MCP Server
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-kubernetes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-kubernetes
+subjects:
+- kind: ServiceAccount
+  name: mcp-kubernetes
+  namespace: atlas

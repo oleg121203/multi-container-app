@@ -77,11 +77,19 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check required Python packages
-    if ! python3 -c "import fastapi, uvicorn, websockets" 2>/dev/null; then
-        log_warning "Installing required Python packages..."
-        pip3 install fastapi uvicorn websockets requests
+    # Ensure virtual environment to avoid PEP 668 issues
+    if [[ ! -d "$PROJECT_ROOT/venv" ]]; then
+        log_info "Creating Python venv at $PROJECT_ROOT/venv..."
+        python3 -m venv "$PROJECT_ROOT/venv"
     fi
+    # Activate venv
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/venv/bin/activate"
+    
+    # Upgrade pip and install requirements
+    python -m pip install --upgrade pip >/dev/null 2>&1 || true
+    log_info "Installing Python dependencies from requirements.txt..."
+    python -m pip install -r "$PROJECT_ROOT/requirements.txt"
     
     # Check project structure
     if [[ ! -f "$PROJECT_ROOT/web/api/server.py" ]]; then
@@ -107,8 +115,10 @@ setup_environment() {
         cp "$PROJECT_ROOT/.env.example" "$ENV_FILE" 2>/dev/null || true
     fi
     
-    # Set up Python path
+    # Set up Python path and ensure venv is active for subsequent functions
     export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/venv/bin/activate"
     
     # Create logs directory
     mkdir -p "$PROJECT_ROOT/logs"
@@ -132,7 +142,7 @@ start_backend_services() {
     fi
     
     # Start the server in background
-    nohup python3 -c "
+    nohup python -c "
 import sys
 sys.path.insert(0, '.')
 from web.api.server import app
